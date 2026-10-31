@@ -69,7 +69,7 @@ jobs:
 
   deploy-to-oci:
     needs: build-and-push
-    runs-on: ubuntu-26.04-arm
+    runs-on: ubuntu-26.04
     steps:
       # 1. Checkout the repository code
       - name: Checkout Code
