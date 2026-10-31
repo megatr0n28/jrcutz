@@ -1,0 +1,7 @@
+# .sops.yaml
+creation_rules:
+  # Matches dev.env, prod.env, dev.env.enc, and prod.env.enc, as well as test.env and test.env.enc
+  - path_regex: (dev|prod|test)\.env(\.enc)?$
+    input_type: dotenv
+    output_type: dotenv
+    age: age16vpltu0enulevcrfljcsvkaqxkmrrz9hcggjq9cvwwt0n92xqyasu96wv3
