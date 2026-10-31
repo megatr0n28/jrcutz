@@ -14,20 +14,65 @@
 # Code coverage profiles and other test artifacts
 *.out
 coverage.*
-!coverage.go
 *.coverprofile
 profile.cov
 
 # Dependency directories (remove the comment below to include it)
 # vendor/
 
+# Go
+/bin/
+/dist/
+*.exe
+*.test
+*.out
+/vendor/
+
 # Go workspace file
 go.work
 go.work.sum
 
-# env file
+# Environment
 .env
+.env.*
+*.env
+!.env.example
+# Explicitly ensure your encrypted files are NEVER accidentally skipped by another rule
+!*.env.enc
 
 # Editor/IDE
-# .idea/
-# .vscode/
+.idea/
+.vscode/
+.vscode/
+*.swp
+*.swo
+
+# Angular
+frontend/node_modules/
+frontend/dist/
+frontend/.angular/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+*.log
+
+# Temporary
+tmp/
+temp/
+
+# Local Terraform state files
+*.tfstate
+*.tfstate.backup
+.terraform/
+.terraform.lock.hcl
+
+# Variable files containing live credentials
+*.tfvars
+
+# Private SSH and API keys
+*.pem
+*.pub
+*.key

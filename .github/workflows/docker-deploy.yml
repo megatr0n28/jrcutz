@@ -1,0 +1,133 @@
+name: Production Secure Deployment
+
+on:
+  push:
+    branches:
+      - main
+
+env:
+  REGISTRY: ghcr.io
+  FRONTEND_IMAGE: ghcr.io/${{ github.repository }}/jrcutz-frontend
+  BACKEND_IMAGE: ghcr.io/${{ github.repository }}/jrcutz-backend
+
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-26.04-arm
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      # 1. Pull down the repository code (includes your .sops.yaml and *.env.enc files)
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # 2. Log in to GitHub Container Registry
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract Frontend Metadata
+        id: meta-frontend
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.FRONTEND_IMAGE }}
+          tags: |
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=sha,format=short
+      # 3. Build and push the frontend and backend images to GitHub Container Registry
+      - name: Extract Backend Metadata
+        id: meta-backend
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.BACKEND_IMAGE }}
+          tags: |
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=sha,format=short
+        
+      - name: Build and Push Frontend Image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          file: ./frontend/Dockerfile
+          push: true
+          tags: ${{ steps.meta-frontend.outputs.tags }}
+          labels: ${{ steps.meta-frontend.outputs.labels }}
+
+      - name: Build and Push Backend Image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          push: true
+          tags: ${{ steps.meta-backend.outputs.tags }}
+          labels: ${{ steps.meta-backend.outputs.labels }}
+
+  deploy-to-oci:
+    needs: build-and-push
+    runs-on: ubuntu-26.04-arm
+    steps:
+      # 1. Checkout the repository code
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # 2. Automatically install and configure SOPS on the runner
+      - name: Install SOPS
+        uses: mdgreenwald/mozilla-sops-action@v1.6.0
+        with:
+          version: 'v3.13.3' # Matches your local version
+          
+      # 3. Deploy your environment to your OCI instance
+      - name: Deploy Stack via SSH
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          SOPS_AGE_KEY: ${{ secrets.SOPS_AGE_KEY }}
+          REGISTRY: ghcr.io
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          envs: SOPS_AGE_KEY,REGISTRY
+          script: |
+            # 1. Navigate to directory and pull latest code
+            echo "Executing deployment commands on the remote OCI Always Free instance..."
+            # Your SSH deployment scripts or Docker commands go here
+            if [ ! -d "/home/ubuntu/jrcutz/.git" ]; then
+              echo "Directory not found. Cloning repository..."
+              git clone https://github.com/${{ github.repository }}.git /home/ubuntu/jrcutz
+              cd /home/ubuntu/jrcutz
+            else
+              cd /home/ubuntu/jrcutz
+              echo "Pulling latest changes from ${{ github.repository}}..."
+              git fetch --all
+              git reset --hard origin/main
+            fi
+
+            # 2. Authenticate to GHCR using your persistent PAT token
+            echo "${{ secrets.GHCR_PAT }}" | docker login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin
+
+            # 3. Decrypt the freshly pulled prod.env.enc file locally on the server
+            sops -d --input-type dotenv --output-type dotenv prod.env.enc > prod.env
+            
+            # 4. Inject lowercase image references into prod.env so Docker Compose knows what to pull
+            FRONTEND_RAW="ghcr.io/${{ github.repository }}/jrcutz-frontend:latest"
+            BACKEND_RAW="ghcr.io/${{ github.repository }}/jrcutz-backend:latest"
+            
+            echo "FRONTEND_IMAGE=${FRONTEND_RAW,,}" >> prod.env
+            echo "BACKEND_IMAGE=${BACKEND_RAW,,}" >> prod.env
+            # Print the injected image references for verification
+            cat prod.env | grep FRONTEND_IMAGE
+            cat prod.env | grep BACKEND_IMAGE
+
+            # 5. Pull updated images and restart stack
+            docker compose --env-file prod.env pull
+            docker compose --env-file prod.env up -d --remove-orphans
+            docker image prune -f
+            echo "Prune unused volumes"
+            docker volume prune -f
+            echo "Prune docker build cache"
+            docker builder prune -a -f

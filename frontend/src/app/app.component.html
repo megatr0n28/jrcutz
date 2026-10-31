@@ -1,0 +1,34 @@
+<header class="topbar">
+  <a class="brand" routerLink="/">
+    <span class="brand-mark">JR</span>
+    <span>Cutz</span>
+  </a>
+
+  <nav>
+    <a routerLink="/">Home</a>
+    <a routerLink="/" fragment="services">Services</a>
+    @if (api.loggedIn) {
+      <a routerLink="/book">Book</a>
+      <a routerLink="/my-bookings">My appointments</a>
+    }
+    @if (api.isAdmin) {
+      <a routerLink="/admin">Admin</a>
+    }
+  </nav>
+
+  @if (api.loggedIn) {
+    <button class="button button-outline" (click)="logout()">Log out</button>
+  } @else {
+    <a class="button button-gold" routerLink="/login">Sign in</a>
+  }
+</header>
+
+<main>
+  <router-outlet />
+</main>
+
+<footer class="footer">
+  <a class="brand" routerLink="/">JR Cutz</a>
+  <span>Craftsmanship. Confidence. Community.</span>
+  <span>© 2026 · Appointment booking</span>
+</footer>
