@@ -29,6 +29,20 @@ export interface Barber {
   imageUrl: string;
 }
 
+export interface TimeSlot {
+  startsAt: string;
+  time: string;
+  available: boolean;
+  reason?: 'booked' | 'past' | 'lunch';
+}
+
+export interface SlotsResponse {
+  date: string;
+  timezone: string;
+  durationMinutes: number;
+  slots: TimeSlot[];
+}
+
 export interface Appointment {
   id: number;
   service?: string;
@@ -106,6 +120,16 @@ export class ApiService {
     return this.http.get<Barber[]>(`${this.base}/barbers`);
   }
 
+  barberSlots(
+    barberId: number, serviceId: number | null, date: string
+  ): Observable<SlotsResponse> {
+    const params: Record<string, string> = { date };
+    if (serviceId) params['serviceId'] = String(serviceId);
+    return this.http.get<SlotsResponse>(
+      `${this.base}/barbers/${barberId}/slots`, { params }
+    );
+  }
+
   book(data: {
     serviceId: number;
     barberId: number;
@@ -138,6 +162,13 @@ export class ApiService {
   updateAppointment(id: number, status: string): Observable<any> {
     return this.http.patch(
       `${this.base}/admin/appointments/${id}`, { status },
+      { headers: this.headers() }
+    );
+  }
+
+  deleteAppointment(id: number): Observable<any> {
+    return this.http.delete(
+      `${this.base}/admin/appointments/${id}`,
       { headers: this.headers() }
     );
   }
