@@ -78,6 +78,11 @@ h3 { font-size: 1.5rem; }
 .topbar nav { display: flex; gap: 23px; align-items: center; }
 .topbar nav a { font-size: .86rem; color: #ded9cf; }
 .topbar nav a:hover { color: var(--gold); }
+.current-user { margin-left: auto; margin-right: 12px; font-size: .82rem; color: #ded9cf; white-space: nowrap; max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
+.current-user strong { color: var(--gold); }
+.session-actions { display: flex; flex-direction: column; align-items: stretch; gap: 6px; }
+.reset-password-link { font-size: .78rem; text-align: center; color: #ded9cf; text-decoration: underline; }
+.reset-password-link:hover { color: var(--gold); }
 
 .button {
   display: inline-flex;
@@ -637,6 +642,16 @@ td small { display: block; color: var(--muted); }
 .slot-grid-admin { max-height: 340px; }
 .slot-view-controls { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; }
 .view-toggle { display: inline-flex; border: 1px solid var(--line); }
+.phone-actions { position: relative; display: block; }
+.phone-trigger { background: none; border: 0; padding: 0; font: inherit; font-size: .78rem; color: var(--gold-dark, #8a6d2b); text-decoration: underline; cursor: pointer; }
+.phone-menu { position: absolute; z-index: 20; left: 0; top: 100%; display: flex; gap: 6px; padding: 6px; background: var(--white); border: 1px solid var(--line); box-shadow: 0 6px 18px rgba(0,0,0,.15); }
+.phone-menu a { padding: 7px 14px; background: #111; color: #fff; font-size: .8rem; font-weight: 600; text-decoration: none; }
+.phone-menu a:hover { background: var(--gold-dark, #8a6d2b); }
+.phone-none { color: var(--muted); font-size: .78rem; }
+.temp-password { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 0 0 12px; padding: 12px 16px; background: #f5eddd; border: 1px solid var(--gold-dark, #8a6d2b); }
+.temp-password p { flex-basis: 100%; margin: 0; font-size: .85rem; }
+.temp-password code { padding: 6px 10px; background: #fff; border: 1px solid var(--line); font-size: 1rem; letter-spacing: .05em; user-select: all; }
+.user-search { display: block; max-width: 340px; margin: 18px 0 12px; font-weight: 600; }
 .week-ending { align-self: center; font-weight: 600; font-size: .85rem; }
 .day-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
 .day-tabs button { background: var(--white); border: 1px solid var(--line); padding: 7px 12px; font: inherit; font-size: .8rem; cursor: pointer; }

@@ -17,7 +17,11 @@
   </nav>
 
   @if (api.loggedIn) {
-    <button class="button button-outline" (click)="logout()">Log out</button>
+    <span class="current-user" [attr.title]="api.user?.email">Signed in as <strong>{{ api.user?.name }}</strong></span>
+    <div class="session-actions">
+      <button class="button button-outline" (click)="logout()">Log out</button>
+      <a class="reset-password-link" routerLink="/change-password">Reset Password</a>
+    </div>
   } @else {
     <a class="button button-gold" routerLink="/login">Sign in</a>
   }

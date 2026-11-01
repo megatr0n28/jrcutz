@@ -11,6 +11,7 @@ export interface User {
   name: string;
   email: string;
   role: 'customer' | 'admin';
+  mustChangePassword?: boolean;
 }
 
 export interface ServiceItem {
@@ -49,10 +50,21 @@ export interface Appointment {
   barber?: string;
   customer?: string;
   email?: string;
+  phone?: string;
   startsAt: string;
   endsAt?: string;
   status: string;
   priceCents?: number;
+}
+
+export interface AdminUser {
+  id: number;
+  name: string;
+  email: string;
+  phone: string;
+  role: 'customer' | 'admin';
+  createdAt: string;
+  appointments: number;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -107,6 +119,18 @@ export class ApiService {
     }).pipe(tap(result => this.saveSession(result)));
   }
 
+  get mustChangePassword(): boolean {
+    return !!this.user?.mustChangePassword;
+  }
+
+  changePassword(
+    currentPassword: string, newPassword: string
+  ): Observable<any> {
+    return this.http.post<any>(`${this.base}/auth/change-password`, {
+      currentPassword, newPassword
+    }, { headers: this.headers() }).pipe(tap(result => this.saveSession(result)));
+  }
+
   logout(): void {
     localStorage.removeItem(this.tokenKey);
     localStorage.removeItem(this.userKey);
@@ -156,6 +180,26 @@ export class ApiService {
   adminAppointments(): Observable<Appointment[]> {
     return this.http.get<Appointment[]>(
       `${this.base}/admin/appointments`, { headers: this.headers() }
+    );
+  }
+
+  adminUsers(): Observable<AdminUser[]> {
+    return this.http.get<AdminUser[]>(
+      `${this.base}/admin/users`, { headers: this.headers() }
+    );
+  }
+
+  resetUserPassword(id: number): Observable<{ temporaryPassword: string }> {
+    return this.http.post<{ temporaryPassword: string }>(
+      `${this.base}/admin/users/${id}/reset-password`, {},
+      { headers: this.headers() }
+    );
+  }
+
+  updateUserRole(id: number, role: 'customer' | 'admin'): Observable<any> {
+    return this.http.patch(
+      `${this.base}/admin/users/${id}`, { role },
+      { headers: this.headers() }
     );
   }
 

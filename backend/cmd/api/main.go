@@ -2,11 +2,14 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"log"
+	"math/big"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -30,6 +33,8 @@ type App struct {
 type Claims struct {
 	UserID int64  `json:"uid"`
 	Role   string `json:"role"`
+	// MustChange limits the token to the change-password endpoint.
+	MustChange bool `json:"mcp,omitempty"`
 	jwt.RegisteredClaims
 }
 
@@ -77,6 +82,11 @@ func (a *App) auth(next http.Handler) http.Handler {
 			return
 		}
 
+		if claims.MustChange && r.URL.Path != changePasswordPath {
+			fail(w, http.StatusForbidden, "Password change required")
+			return
+		}
+
 		ctx := context.WithValue(r.Context(), userKey, claims)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
@@ -89,15 +99,26 @@ func (a *App) admin(next http.Handler) http.Handler {
 			fail(w, http.StatusForbidden, "Admin access required")
 			return
 		}
+		// Re-check the stored role so demotions apply immediately.
+		var role string
+		if a.db.QueryRow(r.Context(),
+			`SELECT role FROM users WHERE id=$1`, claims.UserID,
+		).Scan(&role) != nil || role != "admin" {
+			fail(w, http.StatusForbidden, "Admin access required")
+			return
+		}
 		next.ServeHTTP(w, r)
 	}))
 }
 
-func (a *App) issueToken(id int64, role string) string {
+const changePasswordPath = "/api/auth/change-password"
+
+func (a *App) issueToken(id int64, role string, mustChange bool) string {
 	now := time.Now()
 	t := jwt.NewWithClaims(jwt.SigningMethodHS256, Claims{
-		UserID: id,
-		Role:   role,
+		UserID:     id,
+		Role:       role,
+		MustChange: mustChange,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Issuer:    "barbershop",
 			IssuedAt:  jwt.NewNumericDate(now),
@@ -142,7 +163,7 @@ func (a *App) register(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respond(w, http.StatusCreated, map[string]any{
-		"token": a.issueToken(id, "customer"),
+		"token": a.issueToken(id, "customer", false),
 		"user": map[string]any{
 			"id": id, "name": in.Name,
 			"email": strings.ToLower(in.Email), "role": "customer",
@@ -162,11 +183,12 @@ func (a *App) login(w http.ResponseWriter, r *http.Request) {
 
 	var id int64
 	var name, email, hash, role string
+	var mustChange bool
 	err := a.db.QueryRow(r.Context(),
-		`SELECT id,name,email,password_hash,role
+		`SELECT id,name,email,password_hash,role,must_change_password
 		 FROM users WHERE email=lower($1)`,
 		strings.TrimSpace(in.Email)).
-		Scan(&id, &name, &email, &hash, &role)
+		Scan(&id, &name, &email, &hash, &role, &mustChange)
 
 	if err != nil || bcrypt.CompareHashAndPassword([]byte(hash), []byte(in.Password)) != nil {
 		fail(w, http.StatusUnauthorized, "Invalid email or password")
@@ -174,9 +196,66 @@ func (a *App) login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respond(w, 200, map[string]any{
-		"token": a.issueToken(id, role),
+		"token": a.issueToken(id, role, mustChange),
 		"user": map[string]any{
 			"id": id, "name": name, "email": email, "role": role,
+			"mustChangePassword": mustChange,
+		},
+	})
+}
+
+func (a *App) changePassword(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		CurrentPassword string `json:"currentPassword"`
+		NewPassword     string `json:"newPassword"`
+	}
+	if decode(r, &in) != nil ||
+		len(in.NewPassword) < 12 || len(in.NewPassword) > 72 {
+		fail(w, http.StatusBadRequest, "New password must be 12-72 bytes")
+		return
+	}
+	if in.NewPassword == in.CurrentPassword {
+		fail(w, http.StatusBadRequest,
+			"New password must differ from the current password")
+		return
+	}
+	claims, _ := r.Context().Value(userKey).(*Claims)
+	if claims == nil {
+		fail(w, http.StatusUnauthorized, "Authentication required")
+		return
+	}
+
+	var name, email, hash, role string
+	err := a.db.QueryRow(r.Context(),
+		`SELECT name,email,password_hash,role FROM users WHERE id=$1`,
+		claims.UserID).Scan(&name, &email, &hash, &role)
+	if err != nil {
+		fail(w, http.StatusUnauthorized, "Invalid or expired token")
+		return
+	}
+	if bcrypt.CompareHashAndPassword([]byte(hash), []byte(in.CurrentPassword)) != nil {
+		fail(w, http.StatusForbidden, "Current password is incorrect")
+		return
+	}
+
+	newHash, err := bcrypt.GenerateFromPassword([]byte(in.NewPassword), bcrypt.DefaultCost)
+	if err != nil {
+		fail(w, 500, "Could not change password")
+		return
+	}
+	if _, err := a.db.Exec(r.Context(),
+		`UPDATE users SET password_hash=$1, must_change_password=FALSE WHERE id=$2`,
+		string(newHash), claims.UserID); err != nil {
+		fail(w, 500, "Could not change password")
+		return
+	}
+
+	w.Header().Set("Cache-Control", "no-store")
+	respond(w, 200, map[string]any{
+		"token": a.issueToken(claims.UserID, role, false),
+		"user": map[string]any{
+			"id": claims.UserID, "name": name, "email": email, "role": role,
+			"mustChangePassword": false,
 		},
 	})
 }
@@ -431,6 +510,129 @@ func (a *App) adminAppointments(w http.ResponseWriter, r *http.Request) {
 	respond(w, 200, out)
 }
 
+func (a *App) adminUsers(w http.ResponseWriter, r *http.Request) {
+	rows, err := a.db.Query(r.Context(),
+		`SELECT u.id, u.name, u.email, u.phone, u.role, u.created_at,
+		        COUNT(ap.id)
+		 FROM users u
+		 LEFT JOIN appointments ap ON ap.customer_id=u.id
+		 GROUP BY u.id
+		 ORDER BY u.created_at DESC LIMIT 500`)
+	if err != nil {
+		fail(w, 500, "Could not load users")
+		return
+	}
+	defer rows.Close()
+
+	out := []map[string]any{}
+	for rows.Next() {
+		var id, appts int64
+		var name, email, phone, role string
+		var created time.Time
+		if rows.Scan(&id, &name, &email, &phone, &role, &created, &appts) != nil {
+			fail(w, 500, "Could not read users")
+			return
+		}
+		out = append(out, map[string]any{
+			"id": id, "name": name, "email": email, "phone": phone,
+			"role": role, "createdAt": created, "appointments": appts,
+		})
+	}
+	if rows.Err() != nil {
+		fail(w, 500, "Could not read users")
+		return
+	}
+	respond(w, 200, out)
+}
+
+const tempPasswordAlphabet = "abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+
+// generateTempPassword returns a random 16-character password that avoids
+// look-alike characters so it is easy to read out over the phone.
+func generateTempPassword() (string, error) {
+	const length = 16
+	out := make([]byte, length)
+	max := big.NewInt(int64(len(tempPasswordAlphabet)))
+	for i := range out {
+		n, err := rand.Int(rand.Reader, max)
+		if err != nil {
+			return "", err
+		}
+		out[i] = tempPasswordAlphabet[n.Int64()]
+	}
+	return string(out), nil
+}
+
+func (a *App) resetUserPassword(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil || id <= 0 {
+		fail(w, 400, "Invalid user ID")
+		return
+	}
+	claims, _ := r.Context().Value(userKey).(*Claims)
+	if claims != nil && claims.UserID == id {
+		fail(w, 409, "You cannot reset your own password here")
+		return
+	}
+
+	temp, err := generateTempPassword()
+	if err != nil {
+		fail(w, 500, "Could not generate password")
+		return
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(temp), bcrypt.DefaultCost)
+	if err != nil {
+		fail(w, 500, "Could not reset password")
+		return
+	}
+	tag, err := a.db.Exec(r.Context(),
+		`UPDATE users SET password_hash=$1, must_change_password=TRUE
+		 WHERE id=$2`, string(hash), id)
+	if err != nil {
+		fail(w, 500, "Could not reset password")
+		return
+	}
+	if tag.RowsAffected() == 0 {
+		fail(w, 404, "User not found")
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	respond(w, 200, map[string]string{"temporaryPassword": temp})
+}
+
+func (a *App) updateUserRole(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Role string `json:"role"`
+	}
+	if decode(r, &in) != nil ||
+		(in.Role != "customer" && in.Role != "admin") {
+		fail(w, 400, "Invalid role")
+		return
+	}
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil || id <= 0 {
+		fail(w, 400, "Invalid user ID")
+		return
+	}
+	claims, _ := r.Context().Value(userKey).(*Claims)
+	if claims != nil && claims.UserID == id {
+		fail(w, 409, "You cannot change your own role")
+		return
+	}
+
+	tag, err := a.db.Exec(r.Context(),
+		`UPDATE users SET role=$1 WHERE id=$2`, in.Role, id)
+	if err != nil {
+		fail(w, 500, "Could not update user")
+		return
+	}
+	if tag.RowsAffected() == 0 {
+		fail(w, 404, "User not found")
+		return
+	}
+	respond(w, 200, map[string]string{"role": in.Role})
+}
+
 func (a *App) updateAppointment(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Status string `json:"status"`
@@ -527,6 +729,8 @@ func main() {
 		(&handlers.SlotsHandler{DB: db}).Get)
 	mux.HandleFunc("POST /api/auth/register", app.register)
 	mux.HandleFunc("POST /api/auth/login", app.login)
+	mux.Handle("POST "+changePasswordPath, app.auth(
+		http.HandlerFunc(app.changePassword)))
 
 	mux.Handle("GET /api/me/appointments", app.auth(
 		http.HandlerFunc(app.myAppointments)))
@@ -537,6 +741,12 @@ func main() {
 
 	mux.Handle("GET /api/admin/appointments", app.admin(
 		http.HandlerFunc(app.adminAppointments)))
+	mux.Handle("GET /api/admin/users", app.admin(
+		http.HandlerFunc(app.adminUsers)))
+	mux.Handle("POST /api/admin/users/{id}/reset-password", app.admin(
+		http.HandlerFunc(app.resetUserPassword)))
+	mux.Handle("PATCH /api/admin/users/{id}", app.admin(
+		http.HandlerFunc(app.updateUserRole)))
 	mux.Handle("PATCH /api/admin/appointments/{id}", app.admin(
 		http.HandlerFunc(app.updateAppointment)))
 	mux.Handle("DELETE /api/admin/appointments/{id}", app.admin(
