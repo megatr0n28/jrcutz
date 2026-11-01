@@ -74,17 +74,17 @@ CREATE INDEX appointments_schedule_idx
 
 INSERT INTO services (name, description, price_cents, duration_minutes)
 VALUES
-('Precision Haircut', 'Classic cuts and modern fades', 3500, 30),
-('Haircut & Beard', 'A tailored haircut and beard finish', 5000, 45),
-('Beard Trim', 'Beard shaping and detailing', 2000, 20),
-('Hot Towel Shave', 'Traditional close shave', 3000, 30);
+('Precision Haircut', 'Classic cuts and modern fades, finished with a razor for a clean', 2500, 30),
+('Haircut & Beard', 'A tailored haircut and beard finished with a razor for a clean', 3000, 45),
+('Shape Up', 'The service includes shaping the hairline around the forehead, temples, and neckline, finished with a razor for a clean, precise look. Note: This time is reserved for a shape-up only.', 2000, 10);
+
 
 INSERT INTO barbers (name, bio, specialty)
 VALUES
-('Barber One', 'Experienced barber focused on detail.',
- 'Fades and precision cuts'),
-('Barber Two', 'Classic grooming with a modern finish.',
- 'Classic cuts and beard grooming');
+('Johnathan Rodgers Jr', 'Experienced barber focused on detail.',
+ 'Fades and precision cuts');
+-- ('Barber Two', 'Classic grooming with a modern finish.',
+--  'Classic cuts and beard grooming');
 
 INSERT INTO barber_hours (barber_id, weekday, opens_at, closes_at)
 SELECT b.id, d.weekday, '09:00'::time, '18:00'::time

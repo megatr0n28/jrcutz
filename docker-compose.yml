@@ -10,13 +10,23 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./backend/migrations/001_init.sql:/docker-entrypoint-initdb.d/001_init.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 15
 
+  db-migrate:
+    image: migrate/migrate:v4.18.3
+    container_name: jrcutz-db-migrate
+    volumes:
+      - ./backend/migrations:/migrations:ro
+    environment:
+      MIGRATE_DATABASE_URL: ${DATABASE_URL}
+    command: ["-path=/migrations", "-database", "postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}?sslmode=disable", "up"]
+    depends_on:
+      db:
+        condition: service_healthy
   api:
     build: ./backend
     # Uses the GHCR image in production, falls back to a local tag if building locally
@@ -29,8 +39,8 @@ services:
       ADMIN_EMAIL: ${ADMIN_EMAIL}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD}
     depends_on:
-      db:
-        condition: service_healthy
+      db-migrate:
+        condition: service_completed_successfully
 
   frontend:
     build: ./frontend
@@ -55,7 +65,7 @@ services:
     environment:
       DOMAIN: ${DOMAIN:-jrcutz.duckdns.org}
     volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
     depends_on:

@@ -1,6 +1,27 @@
 # jrcutz
 Barber Appt Scheduling Web Application
 
+## Directory structure
+```text
+jrcutz/
+├── docker-compose.yml
+├── dev.env
+|── dev.env.enc
+|── prod.env
+|── prod.env.enc
+|── .sops.yaml
+├── Caddyfile
+├── backend/
+│   ├── Dockerfile
+│   ├── migrations/
+│   │   ├── 000001_init.up.sql
+│   │   ├── 000001_init.down.sql
+│   │   ├── 000002_barber_availability.up.sql
+│   │   └── 000002_barber_availability.down.sql
+│   ├── cmd/
+│   └── internal/
+└── frontend/
+```
 
 Complete Sandbox Topology State
 
