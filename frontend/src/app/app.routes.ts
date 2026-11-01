@@ -4,11 +4,17 @@ import { LoginComponent } from './pages/login.component';
 import { BookingComponent } from './pages/booking.component';
 import { MyBookingsComponent } from './pages/my-bookings.component';
 import { AdminComponent } from './pages/admin.component';
-import { customerGuard, adminGuard } from './core/auth.guard';
+import { ChangePasswordComponent } from './pages/change-password.component';
+import { customerGuard, adminGuard, signedInGuard } from './core/auth.guard';
 
 export const routes: Routes = [
   { path: '', component: HomeComponent },
   { path: 'login', component: LoginComponent },
+  {
+    path: 'change-password',
+    component: ChangePasswordComponent,
+    canActivate: [signedInGuard]
+  },
   {
     path: 'book',
     component: BookingComponent,

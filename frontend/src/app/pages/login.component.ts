@@ -70,7 +70,8 @@ export class LoginComponent {
       next: result => {
         this.busy = false;
         this.router.navigateByUrl(
-          result.user.role === 'admin' ? '/admin' : '/book'
+          result.user.mustChangePassword ? '/change-password'
+            : result.user.role === 'admin' ? '/admin' : '/book'
         );
       },
       error: e => {

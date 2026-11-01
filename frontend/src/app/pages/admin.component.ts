@@ -1,11 +1,12 @@
 import { Component, OnInit, inject } from '@angular/core';
 import { DatePipe } from '@angular/common';
-import { ApiService, Appointment } from '../core/api.service';
+import { ApiService, Appointment, AdminUser } from '../core/api.service';
 import { BarberScheduleComponent } from './barber-schedule.component';
+import { PhoneActionsComponent } from '../core/phone-actions.component';
 
 @Component({
   standalone: true,
-  imports: [DatePipe, BarberScheduleComponent],
+  imports: [DatePipe, BarberScheduleComponent, PhoneActionsComponent],
   template: `
     <section class="dashboard-page">
       <span class="eyebrow">BUSINESS MANAGEMENT</span>
@@ -54,6 +55,7 @@ import { BarberScheduleComponent } from './barber-schedule.component';
                   <td>
                     <strong>{{ a.customer }}</strong>
                     <small>{{ a.email }}</small>
+                    <app-phone-actions [phone]="a.phone" />
                   </td>
                   <td>{{ a.service }}<small>{{ a.barber }}</small></td>
                   <td>{{ a.startsAt | date:'MMM d, y · h:mm a' }}</td>
@@ -96,6 +98,74 @@ import { BarberScheduleComponent } from './barber-schedule.component';
           </table>
         </div>
         </section>
+
+      <section class="admin-schedule-card" aria-labelledby="users-heading">
+        <div class="admin-toolbar">
+          <div>
+            <span class="eyebrow">THE CLIENT LIST</span>
+            <h2 id="users-heading">Users</h2>
+            <p>{{ users.length }} registered account{{ users.length === 1 ? '' : 's' }}.</p>
+          </div>
+          <button class="button button-outline" (click)="toggleUsers()">
+            {{ showUsers ? 'Hide users' : 'View users' }}
+          </button>
+        </div>
+
+        @if (showUsers) {
+          <label class="user-search">Search
+            <input type="search" name="userSearch" placeholder="Name, email, or phone"
+              [value]="userQuery" (input)="userQuery = $any($event.target).value">
+          </label>
+          @if (usersError) { <p class="error-message">{{ usersError }}</p> }
+          @if (tempPassword) {
+            <div class="temp-password" role="status">
+              <p>Temporary password for <strong>{{ tempPassword.name }}</strong>
+                (shown once — share it securely and ask them to change it):</p>
+              <code>{{ tempPassword.password }}</code>
+              <button type="button" class="action-link" (click)="copyTempPassword()">Copy</button>
+              <button type="button" class="action-link" (click)="tempPassword = null">Dismiss</button>
+            </div>
+          }
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Email</th>
+                  <th>Phone</th>
+                  <th>Role</th>
+                  <th>Appointments</th>
+                  <th>Joined</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (u of filteredUsers; track u.id) {
+                  <tr>
+                    <td><strong>{{ u.name }}</strong></td>
+                    <td>{{ u.email }}</td>
+                    <td><app-phone-actions [phone]="u.phone" /></td>
+                    <td>{{ u.role }}</td>
+                    <td>{{ u.appointments }}</td>
+                    <td>{{ u.createdAt | date:'MMM d, y' }}</td>
+                    <td class="appointment-actions">
+                      @if (u.id !== currentUserId) {
+                        <button class="action-link" (click)="resetPassword(u)">Reset password</button>
+                        <button class="action-link" [class.danger]="u.role === 'admin'"
+                          (click)="setRole(u, u.role === 'admin' ? 'customer' : 'admin')">
+                          {{ u.role === 'admin' ? 'Remove admin' : 'Make admin' }}
+                        </button>
+                      }
+                    </td>
+                  </tr>
+                } @empty {
+                  <tr><td class="empty-appointments" colspan="7">No users found.</td></tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        }
+      </section>
       <!-- Barber Availability Management -->
       <app-barber-schedule></app-barber-schedule>
     </section>
@@ -105,6 +175,11 @@ export class AdminComponent implements OnInit {
   private api = inject(ApiService);
   appointments: Appointment[] = [];
   error = '';
+  users: AdminUser[] = [];
+  showUsers = false;
+  userQuery = '';
+  usersError = '';
+  tempPassword: { name: string; password: string } | null = null;
   filter = 'all';
   filters = [
     { key: 'all', label: 'Total listed' },
@@ -116,6 +191,59 @@ export class AdminComponent implements OnInit {
 
   ngOnInit(): void {
     this.load();
+  }
+
+  get filteredUsers(): AdminUser[] {
+    const q = this.userQuery.trim().toLowerCase();
+    if (!q) return this.users;
+    return this.users.filter(u =>
+      [u.name, u.email, u.phone].some(v => (v || '').toLowerCase().includes(q)));
+  }
+
+  get currentUserId(): number | undefined {
+    return this.api.user?.id;
+  }
+
+  setRole(user: AdminUser, role: 'customer' | 'admin'): void {
+    const action = role === 'admin' ? 'make an admin' : 'remove admin access from';
+    if (!confirm(`Do you want to ${action} ${user.name}?`)) return;
+
+    this.api.updateUserRole(user.id, role).subscribe({
+      next: () => this.loadUsers(),
+      error: e => this.usersError = e.error?.error || 'Unable to update user.'
+    });
+  }
+
+  resetPassword(user: AdminUser): void {
+    if (!confirm(`Reset the password for ${user.name}? Their current password will stop working.`)) return;
+
+    this.tempPassword = null;
+    this.api.resetUserPassword(user.id).subscribe({
+      next: r => {
+        this.usersError = '';
+        this.tempPassword = { name: user.name, password: r.temporaryPassword };
+      },
+      error: e => this.usersError = e.error?.error || 'Unable to reset password.'
+    });
+  }
+
+  copyTempPassword(): void {
+    if (this.tempPassword) navigator.clipboard?.writeText(this.tempPassword.password);
+  }
+
+  toggleUsers(): void {
+    this.showUsers = !this.showUsers;
+    if (this.showUsers) this.loadUsers();
+  }
+
+  loadUsers(): void {
+    this.api.adminUsers().subscribe({
+      next: rows => {
+        this.users = rows;
+        this.usersError = '';
+      },
+      error: e => this.usersError = e.error?.error || 'Unable to load users.'
+    });
   }
 
   get filtered(): Appointment[] {
