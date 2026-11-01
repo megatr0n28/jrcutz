@@ -38,6 +38,7 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       ADMIN_EMAIL: ${ADMIN_EMAIL}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      SHOP_TIMEZONE: ${SHOP_TIMEZONE:-America/New_York}
     depends_on:
       db-migrate:
         condition: service_completed_successfully

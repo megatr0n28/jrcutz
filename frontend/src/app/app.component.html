@@ -32,3 +32,7 @@
   <span>Craftsmanship. Confidence. Community.</span>
   <span>© 2026 · Appointment booking</span>
 </footer>
+
+@if (showTop) {
+  <button type="button" class="back-to-top" aria-label="Back to top" (click)="toTop()">↑ Back to top</button>
+}

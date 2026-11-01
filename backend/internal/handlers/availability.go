@@ -24,6 +24,9 @@ type AvailabilityBlock struct {
 	StartTime string `json:"startTime"`
 	EndTime   string `json:"endTime"`
 	IsActive  bool   `json:"isActive"`
+	// LunchStart and LunchEnd are optional "HH:MM" values, both set or both null.
+	LunchStart *string `json:"lunchStart"`
+	LunchEnd   *string `json:"lunchEnd"`
 }
 
 func (h *AvailabilityHandler) Get(w http.ResponseWriter, r *http.Request) {
@@ -37,7 +40,9 @@ func (h *AvailabilityHandler) Get(w http.ResponseWriter, r *http.Request) {
         SELECT id, barber_id, day_of_week,
                to_char(start_time, 'HH24:MI'),
                to_char(end_time, 'HH24:MI'),
-               is_active
+               is_active,
+               to_char(lunch_start, 'HH24:MI'),
+               to_char(lunch_end, 'HH24:MI')
         FROM barber_availability
         WHERE barber_id = $1
         ORDER BY day_of_week, start_time
@@ -62,6 +67,8 @@ func (h *AvailabilityHandler) Get(w http.ResponseWriter, r *http.Request) {
 			&b.StartTime,
 			&b.EndTime,
 			&b.IsActive,
+			&b.LunchStart,
+			&b.LunchEnd,
 		)
 
 		if err != nil {
@@ -107,7 +114,8 @@ func (h *AvailabilityHandler) Save(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Validate all blocks before modifying the database.
-	for _, b := range blocks {
+	for i := range blocks {
+		b := &blocks[i]
 		if b.DayOfWeek < 0 || b.DayOfWeek > 6 {
 			http.Error(w, "Invalid day of week",
 				http.StatusBadRequest)
@@ -121,6 +129,30 @@ func (h *AvailabilityHandler) Save(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Invalid availability time",
 				http.StatusBadRequest)
 			return
+		}
+
+		// Treat blank lunch values as "no lunch break".
+		if b.LunchStart != nil && *b.LunchStart == "" {
+			b.LunchStart = nil
+		}
+		if b.LunchEnd != nil && *b.LunchEnd == "" {
+			b.LunchEnd = nil
+		}
+		if (b.LunchStart == nil) != (b.LunchEnd == nil) {
+			http.Error(w, "Enter both a lunch start and end time",
+				http.StatusBadRequest)
+			return
+		}
+		if b.LunchStart != nil {
+			ls, e3 := time.Parse("15:04", *b.LunchStart)
+			le, e4 := time.Parse("15:04", *b.LunchEnd)
+			if e3 != nil || e4 != nil || !ls.Before(le) ||
+				ls.Before(start) || le.After(end) {
+				http.Error(w,
+					"Lunch must fall within the working hours",
+					http.StatusBadRequest)
+				return
+			}
 		}
 	}
 
@@ -164,27 +196,59 @@ func (h *AvailabilityHandler) Save(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Preserve existing availability if an appointment is
-	// already scheduled in one of the blocks being removed.
+	// Reject a save that would remove hours currently covering a future
+	// appointment. Appointments already outside the saved hours don't block.
+	// Times are compared in the shop's time zone, matching slot generation.
 	err = tx.QueryRow(r.Context(), `
         SELECT EXISTS (
             SELECT 1
             FROM appointments a
             WHERE a.barber_id = $1
               AND a.status IN ('pending', 'confirmed')
+              AND a.starts_at > now()
+              AND EXISTS (
+                  SELECT 1
+                  FROM barber_availability c
+                  WHERE c.barber_id = a.barber_id
+                    AND c.is_active
+                    AND c.day_of_week =
+                      EXTRACT(DOW FROM a.starts_at AT TIME ZONE $3)::int
+                    AND (a.starts_at AT TIME ZONE $3)::time >= c.start_time
+                    AND (a.ends_at AT TIME ZONE $3)::time <= c.end_time
+                    AND (
+                        c.lunch_start IS NULL
+                        OR NOT (
+                            (a.starts_at AT TIME ZONE $3)::time < c.lunch_end
+                            AND (a.ends_at AT TIME ZONE $3)::time
+                                > c.lunch_start
+                        )
+                    )
+              )
               AND NOT EXISTS (
                   SELECT 1
                   FROM jsonb_to_recordset($2::jsonb)
                     AS b("dayOfWeek" int, "startTime" text,
-                         "endTime" text, "isActive" boolean)
+                         "endTime" text, "isActive" boolean,
+                         "lunchStart" text, "lunchEnd" text)
                   WHERE b."dayOfWeek" =
-                    EXTRACT(DOW FROM a.starts_at)::int
+                    EXTRACT(DOW FROM a.starts_at AT TIME ZONE $3)::int
                     AND b."isActive"
-                    AND a.starts_at::time >= b."startTime"::time
-                    AND a.ends_at::time <= b."endTime"::time
+                    AND (a.starts_at AT TIME ZONE $3)::time
+                        >= b."startTime"::time
+                    AND (a.ends_at AT TIME ZONE $3)::time
+                        <= b."endTime"::time
+                    AND (
+                        b."lunchStart" IS NULL
+                        OR NOT (
+                            (a.starts_at AT TIME ZONE $3)::time
+                                < b."lunchEnd"::time
+                            AND (a.ends_at AT TIME ZONE $3)::time
+                                > b."lunchStart"::time
+                        )
+                    )
               )
         )
-    `, barberID, blocksJSON(blocks)).Scan(&exists)
+    `, barberID, blocksJSON(blocks), ShopLocation().String()).Scan(&exists)
 
 	if err != nil {
 		http.Error(w, "Unable to validate existing appointments",
@@ -212,14 +276,17 @@ func (h *AvailabilityHandler) Save(w http.ResponseWriter, r *http.Request) {
 	for _, b := range blocks {
 		_, err = tx.Exec(r.Context(), `
             INSERT INTO barber_availability
-                (barber_id, day_of_week, start_time, end_time, is_active)
-            VALUES ($1, $2, $3::time, $4::time, $5)
+                (barber_id, day_of_week, start_time, end_time, is_active,
+                 lunch_start, lunch_end)
+            VALUES ($1, $2, $3::time, $4::time, $5, $6::time, $7::time)
         `,
 			barberID,
 			b.DayOfWeek,
 			b.StartTime,
 			b.EndTime,
 			b.IsActive,
+			b.LunchStart,
+			b.LunchEnd,
 		)
 
 		if err != nil {

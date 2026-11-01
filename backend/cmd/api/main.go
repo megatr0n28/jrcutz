@@ -292,6 +292,19 @@ func (a *App) createAppointment(w http.ResponseWriter, r *http.Request) {
 	}
 
 	end := start.Add(time.Duration(duration) * time.Minute)
+
+	inHours, err := handlers.WithinBarberHours(
+		r.Context(), tx, in.BarberID, start, end)
+	if err != nil {
+		fail(w, 500, "Could not verify barber schedule")
+		return
+	}
+	if !inHours {
+		fail(w, http.StatusUnprocessableEntity,
+			"That time is outside the barber's working hours")
+		return
+	}
+
 	var id int64
 	err = tx.QueryRow(r.Context(),
 		`INSERT INTO appointments
@@ -444,6 +457,20 @@ func (a *App) updateAppointment(w http.ResponseWriter, r *http.Request) {
 	respond(w, 200, map[string]string{"status": in.Status})
 }
 
+func (a *App) deleteAppointment(w http.ResponseWriter, r *http.Request) {
+	tag, err := a.db.Exec(r.Context(),
+		`DELETE FROM appointments WHERE id=$1 AND status='cancelled'`, r.PathValue("id"))
+	if err != nil {
+		fail(w, 500, "Could not delete appointment")
+		return
+	}
+	if tag.RowsAffected() == 0 {
+		fail(w, 409, "Only cancelled appointments can be deleted")
+		return
+	}
+	respond(w, 200, map[string]string{"status": "deleted"})
+}
+
 func (a *App) seedAdmin(ctx context.Context) error {
 	email := strings.ToLower(strings.TrimSpace(os.Getenv("ADMIN_EMAIL")))
 	password := os.Getenv("ADMIN_PASSWORD")
@@ -496,6 +523,8 @@ func main() {
 	})
 	mux.HandleFunc("GET /api/services", app.services)
 	mux.HandleFunc("GET /api/barbers", app.barbers)
+	mux.HandleFunc("GET /api/barbers/{id}/slots",
+		(&handlers.SlotsHandler{DB: db}).Get)
 	mux.HandleFunc("POST /api/auth/register", app.register)
 	mux.HandleFunc("POST /api/auth/login", app.login)
 
@@ -510,6 +539,8 @@ func main() {
 		http.HandlerFunc(app.adminAppointments)))
 	mux.Handle("PATCH /api/admin/appointments/{id}", app.admin(
 		http.HandlerFunc(app.updateAppointment)))
+	mux.Handle("DELETE /api/admin/appointments/{id}", app.admin(
+		http.HandlerFunc(app.deleteAppointment)))
 
 	availabilityHandler := &handlers.AvailabilityHandler{
 		DB: db,

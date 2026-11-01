@@ -5,4 +5,6 @@ export interface AvailabilityBlock {
   startTime: string;
   endTime: string;
   isActive: boolean;
+  lunchStart?: string | null;
+  lunchEnd?: string | null;
 }
