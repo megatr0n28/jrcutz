@@ -1,9 +1,11 @@
 {$DOMAIN} {
-    # Route frontend requests to the Angular web container running on Nginx port 80
-    reverse_proxy frontend:80
-
     # Route backend API routes directly to your Go application container port 8080
     handle /api/* {
         reverse_proxy api:8080
+    }
+
+    # Fallback: Route all other requests to the Angular web container
+    handle {
+        reverse_proxy frontend:80
     }
 }
