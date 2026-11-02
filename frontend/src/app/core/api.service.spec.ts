@@ -63,6 +63,42 @@ describe('ApiService', () => {
     http.expectOne('/api/addons').flush([]);
   });
 
+  it('manages services through the admin endpoints', () => {
+    const body = { name: 'A', description: '', priceCents: 100, durationMinutes: 10 };
+    api.adminServices().subscribe();
+    http.expectOne('/api/admin/services').flush([]);
+
+    api.createService(body).subscribe();
+    const create = http.expectOne('/api/admin/services');
+    expect(create.request.method).toBe('POST');
+    expect(create.request.body).toEqual(body);
+    create.flush({});
+
+    api.updateService(4, { active: false }).subscribe();
+    const update = http.expectOne('/api/admin/services/4');
+    expect(update.request.method).toBe('PATCH');
+    expect(update.request.body).toEqual({ active: false });
+    update.flush({});
+  });
+
+  it('manages add-ons through the admin endpoints', () => {
+    const body = { name: 'A', description: '', priceCents: 100, durationMinutes: 5, serviceIds: [1] };
+    api.adminAddOns().subscribe();
+    http.expectOne('/api/admin/addons').flush([]);
+
+    api.createAddOn(body).subscribe();
+    const create = http.expectOne('/api/admin/addons');
+    expect(create.request.method).toBe('POST');
+    expect(create.request.body.serviceIds).toEqual([1]);
+    create.flush({});
+
+    api.updateAddOn(9, { serviceIds: [] }).subscribe();
+    const update = http.expectOne('/api/admin/addons/9');
+    expect(update.request.method).toBe('PATCH');
+    expect(update.request.body).toEqual({ serviceIds: [] });
+    update.flush({});
+  });
+
   it('omits serviceId when none is given', () => {
     api.barberSlots(3, null, '2030-01-07').subscribe();
     const req = http.expectOne(r => r.url === '/api/barbers/3/slots');
