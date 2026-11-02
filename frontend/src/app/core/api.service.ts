@@ -22,6 +22,15 @@ export interface ServiceItem {
   durationMinutes: number;
 }
 
+export interface AddOn {
+  id: number;
+  name: string;
+  description: string;
+  priceCents: number;
+  durationMinutes: number;
+  serviceIds: number[];
+}
+
 export interface Barber {
   id: number;
   name: string;
@@ -55,6 +64,7 @@ export interface Appointment {
   endsAt?: string;
   status: string;
   priceCents?: number;
+  addOns?: string[];
 }
 
 export interface AdminUser {
@@ -144,11 +154,17 @@ export class ApiService {
     return this.http.get<Barber[]>(`${this.base}/barbers`);
   }
 
+  addOns(): Observable<AddOn[]> {
+    return this.http.get<AddOn[]>(`${this.base}/addons`);
+  }
+
   barberSlots(
-    barberId: number, serviceId: number | null, date: string
+    barberId: number, serviceId: number | null, date: string,
+    addOnIds: number[] = []
   ): Observable<SlotsResponse> {
     const params: Record<string, string> = { date };
     if (serviceId) params['serviceId'] = String(serviceId);
+    if (serviceId && addOnIds.length) params['addOnIds'] = addOnIds.join(',');
     return this.http.get<SlotsResponse>(
       `${this.base}/barbers/${barberId}/slots`, { params }
     );
@@ -156,6 +172,7 @@ export class ApiService {
 
   book(data: {
     serviceId: number;
+    addOnIds?: number[];
     barberId: number;
     startsAt: string;
     notes: string;

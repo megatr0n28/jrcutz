@@ -39,6 +39,30 @@ describe('ApiService', () => {
     req.flush({ date: '2030-01-07', timezone: 'UTC', durationMinutes: 15, slots: [] });
   });
 
+  it('sends add-on ids with the slots request and booking', () => {
+    api.barberSlots(3, 7, '2030-01-07', [1, 2]).subscribe();
+    const req = http.expectOne(r => r.url === '/api/barbers/3/slots');
+    expect(req.request.params.get('addOnIds')).toBe('1,2');
+    req.flush({ slots: [] });
+
+    api.book({ serviceId: 7, addOnIds: [1], barberId: 3, startsAt: 'x', notes: '' }).subscribe();
+    const post = http.expectOne('/api/appointments');
+    expect(post.request.body.addOnIds).toEqual([1]);
+    post.flush({});
+  });
+
+  it('omits addOnIds when none are chosen', () => {
+    api.barberSlots(3, 7, '2030-01-07').subscribe();
+    const req = http.expectOne(r => r.url === '/api/barbers/3/slots');
+    expect(req.request.params.has('addOnIds')).toBe(false);
+    req.flush({ slots: [] });
+  });
+
+  it('lists add-ons', () => {
+    api.addOns().subscribe();
+    http.expectOne('/api/addons').flush([]);
+  });
+
   it('omits serviceId when none is given', () => {
     api.barberSlots(3, null, '2030-01-07').subscribe();
     const req = http.expectOne(r => r.url === '/api/barbers/3/slots');

@@ -291,6 +291,43 @@ func (a *App) services(w http.ResponseWriter, r *http.Request) {
 	respond(w, 200, out)
 }
 
+func (a *App) addOns(w http.ResponseWriter, r *http.Request) {
+	rows, err := a.db.Query(r.Context(),
+		`SELECT a.id, a.name, a.description, a.price_cents, a.duration_minutes,
+		        COALESCE(array_agg(x.service_id ORDER BY x.service_id)
+		                 FILTER (WHERE x.service_id IS NOT NULL), '{}')
+		 FROM addons a
+		 LEFT JOIN addon_services x ON x.addon_id = a.id
+		 WHERE a.active GROUP BY a.id ORDER BY a.id`)
+	if err != nil {
+		fail(w, 500, "Could not load add-ons")
+		return
+	}
+	defer rows.Close()
+
+	out := []map[string]any{}
+	for rows.Next() {
+		var id int64
+		var name, description string
+		var price, duration int
+		var serviceIDs []int64
+		if rows.Scan(&id, &name, &description, &price, &duration, &serviceIDs) != nil {
+			fail(w, 500, "Could not read add-ons")
+			return
+		}
+		out = append(out, map[string]any{
+			"id": id, "name": name, "description": description,
+			"priceCents": price, "durationMinutes": duration,
+			"serviceIds": serviceIDs,
+		})
+	}
+	if rows.Err() != nil {
+		fail(w, 500, "Could not read add-ons")
+		return
+	}
+	respond(w, 200, out)
+}
+
 func (a *App) barbers(w http.ResponseWriter, r *http.Request) {
 	rows, err := a.db.Query(r.Context(),
 		`SELECT id,name,bio,specialty,image_url
@@ -324,10 +361,11 @@ func (a *App) barbers(w http.ResponseWriter, r *http.Request) {
 func (a *App) createAppointment(w http.ResponseWriter, r *http.Request) {
 	claims := r.Context().Value(userKey).(*Claims)
 	var in struct {
-		ServiceID int64  `json:"serviceId"`
-		BarberID  int64  `json:"barberId"`
-		StartsAt  string `json:"startsAt"`
-		Notes     string `json:"notes"`
+		ServiceID int64   `json:"serviceId"`
+		AddOnIDs  []int64 `json:"addOnIds"`
+		BarberID  int64   `json:"barberId"`
+		StartsAt  string  `json:"startsAt"`
+		Notes     string  `json:"notes"`
 	}
 	if decode(r, &in) != nil || in.ServiceID <= 0 || in.BarberID <= 0 {
 		fail(w, 400, "Invalid booking request")
@@ -361,6 +399,19 @@ func (a *App) createAppointment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	addOns, err := handlers.ResolveAddOns(
+		r.Context(), tx, in.ServiceID, in.AddOnIDs)
+	if err != nil {
+		if errors.Is(err, handlers.ErrAddOnUnavailable) {
+			fail(w, http.StatusUnprocessableEntity,
+				"That add-on is not available with this service")
+		} else {
+			fail(w, 500, "Could not verify add-ons")
+		}
+		return
+	}
+	duration += handlers.AddOnMinutes(addOns)
+
 	var barberOK bool
 	err = tx.QueryRow(r.Context(),
 		`SELECT EXISTS(SELECT 1 FROM barbers WHERE id=$1 AND active)`,
@@ -392,6 +443,17 @@ func (a *App) createAppointment(w http.ResponseWriter, r *http.Request) {
 		claims.UserID, in.BarberID, in.ServiceID,
 		start, end, strings.TrimSpace(in.Notes)).Scan(&id)
 
+	if err == nil {
+		for _, ao := range addOns {
+			if _, err = tx.Exec(r.Context(),
+				`INSERT INTO appointment_addons
+				 (appointment_id,addon_id,price_cents,duration_minutes)
+				 VALUES($1,$2,$3,$4)`,
+				id, ao.ID, ao.PriceCents, ao.DurationMinutes); err != nil {
+				break
+			}
+		}
+	}
 	if err != nil {
 		// SQLSTATE 23P01 is the PostgreSQL exclusion violation.
 		var pgErr *pgconn.PgError
@@ -417,7 +479,12 @@ func (a *App) myAppointments(w http.ResponseWriter, r *http.Request) {
 	c := r.Context().Value(userKey).(*Claims)
 	rows, err := a.db.Query(r.Context(),
 		`SELECT ap.id, s.name, b.name, ap.starts_at, ap.ends_at,
-		        ap.status, s.price_cents
+		        ap.status,
+		        s.price_cents + COALESCE((SELECT sum(price_cents)
+		            FROM appointment_addons WHERE appointment_id=ap.id), 0)::int,
+		        COALESCE((SELECT array_agg(a.name ORDER BY a.id)
+		            FROM appointment_addons aa JOIN addons a ON a.id=aa.addon_id
+		            WHERE aa.appointment_id=ap.id), '{}')
 		 FROM appointments ap
 		 JOIN services s ON s.id=ap.service_id
 		 JOIN barbers b ON b.id=ap.barber_id
@@ -435,14 +502,16 @@ func (a *App) myAppointments(w http.ResponseWriter, r *http.Request) {
 		var service, barber, status string
 		var start, end time.Time
 		var price int
-		if rows.Scan(&id, &service, &barber, &start, &end, &status, &price) != nil {
+		var addOnNames []string
+		if rows.Scan(&id, &service, &barber, &start, &end, &status, &price,
+			&addOnNames) != nil {
 			fail(w, 500, "Could not read appointments")
 			return
 		}
 		out = append(out, map[string]any{
 			"id": id, "service": service, "barber": barber,
 			"startsAt": start, "endsAt": end,
-			"status": status, "priceCents": price,
+			"status": status, "priceCents": price, "addOns": addOnNames,
 		})
 	}
 	if rows.Err() != nil {
@@ -475,7 +544,10 @@ func (a *App) cancelAppointment(w http.ResponseWriter, r *http.Request) {
 func (a *App) adminAppointments(w http.ResponseWriter, r *http.Request) {
 	rows, err := a.db.Query(r.Context(),
 		`SELECT ap.id, u.name, u.email, u.phone, s.name, b.name,
-		        ap.starts_at, ap.ends_at, ap.status
+		        ap.starts_at, ap.ends_at, ap.status,
+		        COALESCE((SELECT array_agg(a.name ORDER BY a.id)
+		            FROM appointment_addons aa JOIN addons a ON a.id=aa.addon_id
+		            WHERE aa.appointment_id=ap.id), '{}')
 		 FROM appointments ap
 		 JOIN users u ON u.id=ap.customer_id
 		 JOIN services s ON s.id=ap.service_id
@@ -492,14 +564,15 @@ func (a *App) adminAppointments(w http.ResponseWriter, r *http.Request) {
 		var id int64
 		var customer, email, phone, service, barber, status string
 		var start, end time.Time
+		var addOnNames []string
 		if rows.Scan(&id, &customer, &email, &phone, &service,
-			&barber, &start, &end, &status) != nil {
+			&barber, &start, &end, &status, &addOnNames) != nil {
 			fail(w, 500, "Could not read appointments")
 			return
 		}
 		out = append(out, map[string]any{
 			"id": id, "customer": customer, "email": email, "phone": phone,
-			"service": service, "barber": barber,
+			"service": service, "barber": barber, "addOns": addOnNames,
 			"startsAt": start, "endsAt": end, "status": status,
 		})
 	}
@@ -724,6 +797,7 @@ func main() {
 		respond(w, 200, map[string]string{"status": "ok"})
 	})
 	mux.HandleFunc("GET /api/services", app.services)
+	mux.HandleFunc("GET /api/addons", app.addOns)
 	mux.HandleFunc("GET /api/barbers", app.barbers)
 	mux.HandleFunc("GET /api/barbers/{id}/slots",
 		(&handlers.SlotsHandler{DB: db}).Get)

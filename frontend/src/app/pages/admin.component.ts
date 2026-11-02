@@ -57,7 +57,7 @@ import { PhoneActionsComponent } from '../core/phone-actions.component';
                     <small>{{ a.email }}</small>
                     <app-phone-actions [phone]="a.phone" />
                   </td>
-                  <td>{{ a.service }}<small>{{ a.barber }}</small></td>
+                  <td>{{ a.service }}@if (a.addOns?.length) { + {{ a.addOns!.join(', ') }} }<small>{{ a.barber }}</small></td>
                   <td>{{ a.startsAt | date:'MMM d, y · h:mm a' }}</td>
                   <td>
                     <span class="status"
