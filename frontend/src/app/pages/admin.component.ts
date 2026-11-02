@@ -4,10 +4,11 @@ import { ApiService, Appointment, AdminUser } from '../core/api.service';
 import { BarberScheduleComponent } from './barber-schedule.component';
 import { PhoneActionsComponent } from '../core/phone-actions.component';
 import { CatalogAdminComponent } from './catalog-admin.component';
+import { PriceBreakdownComponent } from '../core/price-breakdown.component';
 
 @Component({
   standalone: true,
-  imports: [DatePipe, BarberScheduleComponent, PhoneActionsComponent, CatalogAdminComponent],
+  imports: [DatePipe, BarberScheduleComponent, PhoneActionsComponent, CatalogAdminComponent, PriceBreakdownComponent],
   template: `
     <section class="dashboard-page">
       <span class="eyebrow">BUSINESS MANAGEMENT</span>
@@ -46,6 +47,7 @@ import { CatalogAdminComponent } from './catalog-admin.component';
                 <th>Customer</th>
                 <th>Service / Barber</th>
                 <th>Date &amp; time</th>
+                <th>Price</th>
                 <th>Status</th>
                 <th>Actions</th>
               </tr>
@@ -60,6 +62,7 @@ import { CatalogAdminComponent } from './catalog-admin.component';
                   </td>
                   <td>{{ a.service }}@if (a.addOns?.length) { + {{ a.addOns!.join(', ') }} }<small>{{ a.barber }}</small></td>
                   <td>{{ a.startsAt | date:'MMM d, y · h:mm a' }}</td>
+                  <td><app-price-breakdown [breakdown]="a.breakdown" /></td>
                   <td>
                     <span class="status"
                       [class.status-pending]="a.status === 'pending'"
@@ -93,7 +96,7 @@ import { CatalogAdminComponent } from './catalog-admin.component';
                   </td>
                 </tr>
               } @empty {
-                <tr><td class="empty-appointments" colspan="5">No appointments found.</td></tr>
+                <tr><td class="empty-appointments" colspan="6">No appointments found.</td></tr>
               }
             </tbody>
           </table>

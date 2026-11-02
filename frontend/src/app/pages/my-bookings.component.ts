@@ -1,10 +1,11 @@
 import { Component, OnInit, inject } from '@angular/core';
-import { DatePipe, CurrencyPipe } from '@angular/common';
+import { DatePipe } from '@angular/common';
 import { ApiService, Appointment } from '../core/api.service';
+import { PriceBreakdownComponent } from '../core/price-breakdown.component';
 
 @Component({
   standalone: true,
-  imports: [DatePipe, CurrencyPipe],
+  imports: [DatePipe, PriceBreakdownComponent],
   template: `
     <section class="dashboard-page">
       <span class="eyebrow">YOUR VISITS</span>
@@ -26,7 +27,7 @@ import { ApiService, Appointment } from '../core/api.service';
               <p>{{ a.startsAt | date:'EEE, MMM d, y · h:mm a' }}</p>
             </div>
             <div class="appointment-side">
-              <strong>{{ (a.priceCents || 0) / 100 | currency:'USD' }}</strong>
+              <app-price-breakdown [breakdown]="a.breakdown" />
               <span class="status">{{ a.status }}</span>
               @if (a.status === 'pending' || a.status === 'confirmed') {
                 <button class="button button-outline" (click)="cancel(a.id)">

@@ -71,6 +71,19 @@ export interface SlotsResponse {
   slots: TimeSlot[];
 }
 
+export interface PriceLine {
+  name: string;
+  priceCents: number;
+  durationMinutes: number;
+}
+
+export interface PriceBreakdown {
+  service: PriceLine;
+  addOns: PriceLine[];
+  totalCents: number;
+  totalMinutes: number;
+}
+
 export interface Appointment {
   id: number;
   service?: string;
@@ -83,6 +96,7 @@ export interface Appointment {
   status: string;
   priceCents?: number;
   addOns?: string[];
+  breakdown?: PriceBreakdown;
 }
 
 export interface AdminUser {
