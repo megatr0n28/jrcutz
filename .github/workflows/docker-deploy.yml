@@ -77,7 +77,7 @@ jobs:
 
       # 2. Automatically install and configure SOPS on the runner
       - name: Install SOPS
-        uses: mdgreenwald/mozilla-sops-action@v1.6.0
+        uses: mdgreenwald/mozilla-sops-action@v2.1.2
         with:
           version: 'v3.13.3' # Matches your local version
           
