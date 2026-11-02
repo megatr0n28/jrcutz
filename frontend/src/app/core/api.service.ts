@@ -31,6 +31,24 @@ export interface AddOn {
   serviceIds: number[];
 }
 
+export interface CatalogItem {
+  id: number;
+  name: string;
+  description: string;
+  priceCents: number;
+  durationMinutes: number;
+  active: boolean;
+  serviceIds?: number[];
+}
+
+export interface CatalogInput {
+  name: string;
+  description: string;
+  priceCents: number;
+  durationMinutes: number;
+  serviceIds?: number[];
+}
+
 export interface Barber {
   id: number;
   name: string;
@@ -198,6 +216,40 @@ export class ApiService {
     return this.http.get<Appointment[]>(
       `${this.base}/admin/appointments`, { headers: this.headers() }
     );
+  }
+
+  adminServices(): Observable<CatalogItem[]> {
+    return this.http.get<CatalogItem[]>(
+      `${this.base}/admin/services`, { headers: this.headers() });
+  }
+
+  createService(data: CatalogInput): Observable<CatalogItem> {
+    return this.http.post<CatalogItem>(
+      `${this.base}/admin/services`, data, { headers: this.headers() });
+  }
+
+  updateService(
+    id: number, data: Partial<CatalogInput> & { active?: boolean }
+  ): Observable<CatalogItem> {
+    return this.http.patch<CatalogItem>(
+      `${this.base}/admin/services/${id}`, data, { headers: this.headers() });
+  }
+
+  adminAddOns(): Observable<CatalogItem[]> {
+    return this.http.get<CatalogItem[]>(
+      `${this.base}/admin/addons`, { headers: this.headers() });
+  }
+
+  createAddOn(data: CatalogInput): Observable<CatalogItem> {
+    return this.http.post<CatalogItem>(
+      `${this.base}/admin/addons`, data, { headers: this.headers() });
+  }
+
+  updateAddOn(
+    id: number, data: Partial<CatalogInput> & { active?: boolean }
+  ): Observable<CatalogItem> {
+    return this.http.patch<CatalogItem>(
+      `${this.base}/admin/addons/${id}`, data, { headers: this.headers() });
   }
 
   adminUsers(): Observable<AdminUser[]> {

@@ -821,6 +821,18 @@ func main() {
 		http.HandlerFunc(app.resetUserPassword)))
 	mux.Handle("PATCH /api/admin/users/{id}", app.admin(
 		http.HandlerFunc(app.updateUserRole)))
+	mux.Handle("GET /api/admin/services", app.admin(
+		http.HandlerFunc(app.adminServices)))
+	mux.Handle("POST /api/admin/services", app.admin(
+		http.HandlerFunc(app.createService)))
+	mux.Handle("PATCH /api/admin/services/{id}", app.admin(
+		http.HandlerFunc(app.updateService)))
+	mux.Handle("GET /api/admin/addons", app.admin(
+		http.HandlerFunc(app.adminAddOns)))
+	mux.Handle("POST /api/admin/addons", app.admin(
+		http.HandlerFunc(app.createAddOn)))
+	mux.Handle("PATCH /api/admin/addons/{id}", app.admin(
+		http.HandlerFunc(app.updateAddOn)))
 	mux.Handle("PATCH /api/admin/appointments/{id}", app.admin(
 		http.HandlerFunc(app.updateAppointment)))
 	mux.Handle("DELETE /api/admin/appointments/{id}", app.admin(

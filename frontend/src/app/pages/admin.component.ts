@@ -3,10 +3,11 @@ import { DatePipe } from '@angular/common';
 import { ApiService, Appointment, AdminUser } from '../core/api.service';
 import { BarberScheduleComponent } from './barber-schedule.component';
 import { PhoneActionsComponent } from '../core/phone-actions.component';
+import { CatalogAdminComponent } from './catalog-admin.component';
 
 @Component({
   standalone: true,
-  imports: [DatePipe, BarberScheduleComponent, PhoneActionsComponent],
+  imports: [DatePipe, BarberScheduleComponent, PhoneActionsComponent, CatalogAdminComponent],
   template: `
     <section class="dashboard-page">
       <span class="eyebrow">BUSINESS MANAGEMENT</span>
@@ -166,6 +167,7 @@ import { PhoneActionsComponent } from '../core/phone-actions.component';
           </div>
         }
       </section>
+      <app-catalog-admin></app-catalog-admin>
       <!-- Barber Availability Management -->
       <app-barber-schedule></app-barber-schedule>
     </section>
