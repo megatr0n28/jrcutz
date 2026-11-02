@@ -32,6 +32,10 @@ func (r *fakeRows) Scan(dest ...any) error {
 	row := r.data[r.i-1]
 	for i, d := range dest {
 		switch p := d.(type) {
+		case *int64:
+			*p = row[i].(int64)
+		case *int:
+			*p = row[i].(int)
 		case *string:
 			*p = row[i].(string)
 		case **string:
@@ -125,6 +129,7 @@ func TestSlotsGetValidation(t *testing.T) {
 		{"bad barber", "abc", "date=2030-01-01", "Invalid barber ID"},
 		{"zero barber", "0", "date=2030-01-01", "Invalid barber ID"},
 		{"bad service", "1", "serviceId=x&date=2030-01-01", "Invalid service"},
+		{"add-ons without a service", "1", "addOnIds=1&date=" + time.Now().In(ShopLocation()).AddDate(0, 0, 1).Format("2006-01-02"), "Add-ons require a service"},
 		{"bad date", "1", "date=nope", "Invalid date"},
 		{"past date", "1", "date=" + past, "within the next 3 months"},
 		{"too far", "1", "date=" + future, "within the next 3 months"},

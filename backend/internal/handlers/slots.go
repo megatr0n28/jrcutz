@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"os"
 	"strconv"
@@ -98,6 +99,26 @@ func (h *SlotsHandler) Get(w http.ResponseWriter, r *http.Request) {
 			writeSlotsError(w, http.StatusBadRequest, "Service unavailable")
 			return
 		}
+
+		addOnIDs, perr := ParseAddOnIDs(r.URL.Query().Get("addOnIds"))
+		var addOns []AddOn
+		if perr == nil {
+			addOns, perr = ResolveAddOns(ctx, h.DB, serviceID, addOnIDs)
+		}
+		if perr != nil {
+			if errors.Is(perr, ErrAddOnUnavailable) {
+				writeSlotsError(w, http.StatusBadRequest, perr.Error())
+			} else {
+				writeSlotsError(w, http.StatusInternalServerError,
+					"Unable to load add-ons")
+			}
+			return
+		}
+		duration += AddOnMinutes(addOns)
+	} else if r.URL.Query().Get("addOnIds") != "" {
+		writeSlotsError(w, http.StatusBadRequest,
+			"Add-ons require a service")
+		return
 	}
 
 	var barberOK bool

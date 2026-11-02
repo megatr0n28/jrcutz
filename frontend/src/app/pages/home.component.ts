@@ -1,7 +1,7 @@
 import { Component, OnInit, inject } from '@angular/core';
 import { CurrencyPipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
-import { ApiService, ServiceItem, Barber } from '../core/api.service';
+import { ApiService, AddOn, ServiceItem, Barber } from '../core/api.service';
 
 @Component({
   standalone: true,
@@ -45,6 +45,24 @@ import { ApiService, ServiceItem, Barber } from '../core/api.service';
           <p>Loading services…</p>
         }
       </div>
+      @if (addOns.length) {
+        <div class="section-heading addon-heading">
+          <span class="eyebrow">ADD-ON SERVICES</span>
+        </div>
+        <div class="service-grid">
+          @for (a of addOns; track a.id) {
+            <article class="service-card">
+              <h3>{{ a.name }}</h3>
+              <p>{{ a.description }}</p>
+              <p class="addon-eligible">Available with {{ eligibleNames(a) }}</p>
+              <div class="service-meta">
+                <span>{{ a.durationMinutes }} min</span>
+                <strong>{{ a.priceCents / 100 | currency:'USD' }}</strong>
+              </div>
+            </article>
+          }
+        </div>
+      }
     </section>
 
     <section class="barbers-section">
@@ -85,10 +103,22 @@ import { ApiService, ServiceItem, Barber } from '../core/api.service';
 export class HomeComponent implements OnInit {
   private api = inject(ApiService);
   services: ServiceItem[] = [];
+  addOns: AddOn[] = [];
   barbers: Barber[] = [];
   error = '';
 
+  eligibleNames(a: AddOn): string {
+    return this.services
+      .filter(s => a.serviceIds.includes(s.id))
+      .map(s => s.name)
+      .join(' and ');
+  }
+
   ngOnInit(): void {
+    this.api.addOns().subscribe({
+      next: v => this.addOns = v,
+      error: () => this.addOns = []
+    });
     this.api.services().subscribe({
       next: v => this.services = v,
       error: () => this.error = 'Services are temporarily unavailable.'

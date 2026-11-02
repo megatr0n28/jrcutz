@@ -164,6 +164,13 @@ h3 { font-size: 1.5rem; }
 }
 .service-number { color: var(--gold-dark); font-size: .78rem; letter-spacing: 2px; }
 .service-card h3 { margin: 21px 0 10px; }
+.addon-heading { margin-top: 40px; }
+.addon-eligible { font-size: .8rem; }
+.addon-list { border: 1px solid #d8d1c3; border-radius: 6px; padding: 10px 14px; margin: 14px 0 0; }
+.addon-list legend { font-size: .8rem; padding: 0 6px; color: var(--muted); }
+.addon-option { display: flex; align-items: center; gap: 10px; cursor: pointer; }
+.addon-option input { width: auto; margin: 0; }
+.addon-option small { display: block; color: var(--muted); }
 .service-card p { flex: 1; color: var(--muted); font-size: .88rem; }
 .service-meta {
   display: flex;

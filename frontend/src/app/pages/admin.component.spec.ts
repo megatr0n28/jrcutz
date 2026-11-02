@@ -82,6 +82,14 @@ describe('AdminComponent', () => {
     expect(el().querySelector('tbody .phone-text')?.getAttribute('href')).toBe('sms:5559876543');
   });
 
+  it('shows add-ons next to the service name', () => {
+    const withAddOn = [{ id: 7, customer: 'C', email: 'c@x.com', phone: '', service: 'Precision Haircut', addOns: ['Enhancements'], barber: 'B', startsAt: '2030-01-07T15:00:00Z', status: 'pending' }];
+    api['adminAppointments'].mockReturnValue(of(withAddOn));
+    comp.ngOnInit();
+    fixture.detectChanges();
+    expect(el().textContent).toContain('Precision Haircut + Enhancements');
+  });
+
   it('offers Delete only on cancelled appointments', () => {
     const deletes = Array.from(el().querySelectorAll('tbody button'))
       .filter(b => b.textContent?.trim() === 'Delete');

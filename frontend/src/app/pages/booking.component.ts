@@ -3,7 +3,7 @@ import { Component, OnInit, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { CurrencyPipe } from '@angular/common';
 import { Router } from '@angular/router';
-import { ApiService, Barber, ServiceItem, TimeSlot } from '../core/api.service';
+import { ApiService, AddOn, Barber, ServiceItem, TimeSlot } from '../core/api.service';
 
 @Component({
   standalone: true,
@@ -59,7 +59,7 @@ import { ApiService, Barber, ServiceItem, TimeSlot } from '../core/api.service';
                 <p>Choose the service you'd like.</p>
                 <label>Service
                   <select name="service" [(ngModel)]="serviceId"
-                    (ngModelChange)="loadSlots()" required>
+                    (ngModelChange)="onServiceChange()" required>
                     <option [ngValue]="0" disabled>Select a service</option>
                     @for (s of services; track s.id) {
                       <option [ngValue]="s.id">
@@ -69,6 +69,23 @@ import { ApiService, Barber, ServiceItem, TimeSlot } from '../core/api.service';
                     }
                   </select>
                 </label>
+                @if (eligibleAddOns.length) {
+                  <fieldset class="addon-list">
+                    <legend>Add-on services</legend>
+                    @for (a of eligibleAddOns; track a.id) {
+                      <label class="addon-option">
+                        <input type="checkbox" [name]="'addon-' + a.id"
+                          [checked]="addOnIds.includes(a.id)"
+                          (change)="toggleAddOn(a.id)">
+                        <span>
+                          {{ a.name }}
+                          <small>+{{ a.durationMinutes }} min ·
+                            +{{ a.priceCents / 100 | currency:'USD' }}</small>
+                        </span>
+                      </label>
+                    }
+                  </fieldset>
+                }
               </div>
             </div>
 
@@ -162,6 +179,8 @@ export class BookingComponent implements OnInit {
   private router = inject(Router);
 
   services: ServiceItem[] = [];
+  addOns: AddOn[] = [];
+  addOnIds: number[] = [];
   barbers: Barber[] = [];
   serviceId = 0;
   barberId = 0;
@@ -178,8 +197,25 @@ export class BookingComponent implements OnInit {
   error = '';
   success = '';
 
+  get eligibleAddOns(): AddOn[] {
+    return this.addOns.filter(a => a.serviceIds.includes(this.serviceId));
+  }
+
   get hasOpenSlot(): boolean {
     return this.slots.some(s => s.available);
+  }
+
+  onServiceChange(): void {
+    const eligible = this.eligibleAddOns.map(a => a.id);
+    this.addOnIds = this.addOnIds.filter(id => eligible.includes(id));
+    this.loadSlots();
+  }
+
+  toggleAddOn(id: number): void {
+    this.addOnIds = this.addOnIds.includes(id)
+      ? this.addOnIds.filter(x => x !== id)
+      : [...this.addOnIds, id];
+    this.loadSlots();
   }
 
   ngOnInit(): void {
@@ -192,6 +228,10 @@ export class BookingComponent implements OnInit {
     this.api.services().subscribe({
       next: v => this.services = v,
       error: () => this.error = 'Could not load services.'
+    });
+    this.api.addOns().subscribe({
+      next: v => this.addOns = v,
+      error: () => this.addOns = []
     });
     this.api.barbers().subscribe({
       next: v => {
@@ -223,9 +263,12 @@ export class BookingComponent implements OnInit {
 
     if (!this.serviceId || !this.barberId || !this.date) return;
 
-    const request = { s: this.serviceId, b: this.barberId, d: this.date };
+    const request = {
+      s: this.serviceId, b: this.barberId, d: this.date,
+      a: this.addOnIds.join(',')
+    };
     this.slotsLoading = true;
-    this.api.barberSlots(request.b, request.s, request.d).subscribe({
+    this.api.barberSlots(request.b, request.s, request.d, [...this.addOnIds]).subscribe({
       next: result => {
         if (!this.isCurrent(request)) return;
         this.slotsLoading = false;
@@ -240,8 +283,9 @@ export class BookingComponent implements OnInit {
     });
   }
 
-  private isCurrent(r: { s: number; b: number; d: string }): boolean {
-    return r.s === this.serviceId && r.b === this.barberId && r.d === this.date;
+  private isCurrent(r: { s: number; b: number; d: string; a: string }): boolean {
+    return r.s === this.serviceId && r.b === this.barberId &&
+      r.d === this.date && r.a === this.addOnIds.join(',');
   }
 
   submit(): void {
@@ -262,6 +306,7 @@ export class BookingComponent implements OnInit {
 
     this.api.book({
       serviceId: this.serviceId,
+      addOnIds: this.addOnIds,
       barberId: this.barberId,
       startsAt: slotDate.toISOString(),
       notes: this.notes

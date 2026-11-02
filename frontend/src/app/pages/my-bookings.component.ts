@@ -19,6 +19,9 @@ import { ApiService, Appointment } from '../core/api.service';
             <div>
               <span class="eyebrow">BOOKING #{{ a.id }}</span>
               <h3>{{ a.service }}</h3>
+              @if (a.addOns?.length) {
+                <p>+ {{ a.addOns!.join(', ') }}</p>
+              }
               <p>With {{ a.barber }}</p>
               <p>{{ a.startsAt | date:'EEE, MMM d, y · h:mm a' }}</p>
             </div>
