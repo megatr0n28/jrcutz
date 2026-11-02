@@ -66,14 +66,25 @@ describe('PhoneActionsComponent', () => {
     el(f).remove();
   });
 
-  it('closes after choosing an option', () => {
+  it('closes after choosing an option, without detaching the link mid-click', () => {
+    vi.useFakeTimers();
     const f = create('5551234567');
     f.componentInstance.open = true;
     f.detectChanges();
     const call = el(f).querySelector('.phone-call') as HTMLAnchorElement;
-    call.addEventListener('click', e => e.preventDefault());
+    let connectedDuringClick = false;
+    call.addEventListener('click', e => {
+      e.preventDefault();
+      setTimeout(() => {}, 0);
+    });
     call.click();
     f.detectChanges();
+    connectedDuringClick = el(f).contains(call);
+    expect(connectedDuringClick).toBe(true);
+    expect(f.componentInstance.open).toBe(true);
+    vi.runAllTimers();
+    f.detectChanges();
     expect(f.componentInstance.open).toBe(false);
+    vi.useRealTimers();
   });
 });

@@ -18,8 +18,8 @@ export function phoneHref(phone: string | null | undefined): string {
           aria-haspopup="menu" (click)="open = !open">{{ phone }}</button>
         @if (open) {
           <span class="phone-menu" role="menu">
-            <a role="menuitem" class="phone-call" [href]="'tel:' + href" (click)="open = false">Call</a>
-            <a role="menuitem" class="phone-text" [href]="'sms:' + href" (click)="open = false">Text</a>
+            <a role="menuitem" class="phone-call" [href]="'tel:' + href" (click)="closeSoon()">Call</a>
+            <a role="menuitem" class="phone-text" [href]="'sms:' + href" (click)="closeSoon()">Text</a>
           </span>
         }
       </span>
@@ -35,6 +35,11 @@ export class PhoneActionsComponent {
 
   get href(): string {
     return phoneHref(this.phone);
+  }
+
+  // Removing the link during its own click would cancel the tel:/sms: navigation.
+  closeSoon(): void {
+    setTimeout(() => (this.open = false), 0);
   }
 
   @HostListener('document:click', ['$event'])
