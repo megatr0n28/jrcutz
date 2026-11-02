@@ -479,12 +479,7 @@ func (a *App) myAppointments(w http.ResponseWriter, r *http.Request) {
 	c := r.Context().Value(userKey).(*Claims)
 	rows, err := a.db.Query(r.Context(),
 		`SELECT ap.id, s.name, b.name, ap.starts_at, ap.ends_at,
-		        ap.status,
-		        s.price_cents + COALESCE((SELECT sum(price_cents)
-		            FROM appointment_addons WHERE appointment_id=ap.id), 0)::int,
-		        COALESCE((SELECT array_agg(a.name ORDER BY a.id)
-		            FROM appointment_addons aa JOIN addons a ON a.id=aa.addon_id
-		            WHERE aa.appointment_id=ap.id), '{}')
+		        ap.status, s.price_cents, s.duration_minutes
 		 FROM appointments ap
 		 JOIN services s ON s.id=ap.service_id
 		 JOIN barbers b ON b.id=ap.barber_id
@@ -496,27 +491,45 @@ func (a *App) myAppointments(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 
-	out := []map[string]any{}
+	type item struct {
+		id            int64
+		barber, state string
+		start, end    time.Time
+		service       priceLine
+	}
+	var items []item
+	var ids []int64
 	for rows.Next() {
-		var id int64
-		var service, barber, status string
-		var start, end time.Time
-		var price int
-		var addOnNames []string
-		if rows.Scan(&id, &service, &barber, &start, &end, &status, &price,
-			&addOnNames) != nil {
+		var it item
+		if rows.Scan(&it.id, &it.service.Name, &it.barber, &it.start, &it.end,
+			&it.state, &it.service.PriceCents, &it.service.DurationMinutes) != nil {
 			fail(w, 500, "Could not read appointments")
 			return
 		}
-		out = append(out, map[string]any{
-			"id": id, "service": service, "barber": barber,
-			"startsAt": start, "endsAt": end,
-			"status": status, "priceCents": price, "addOns": addOnNames,
-		})
+		items = append(items, it)
+		ids = append(ids, it.id)
 	}
 	if rows.Err() != nil {
 		fail(w, 500, "Could not read appointments")
 		return
+	}
+	rows.Close()
+
+	lines, err := a.loadAddOnLines(r.Context(), ids)
+	if err != nil {
+		fail(w, 500, "Could not read appointments")
+		return
+	}
+
+	out := []map[string]any{}
+	for _, it := range items {
+		bd := buildBreakdown(it.service, lines[it.id])
+		out = append(out, map[string]any{
+			"id": it.id, "service": it.service.Name, "barber": it.barber,
+			"startsAt": it.start, "endsAt": it.end,
+			"status": it.state, "priceCents": bd.TotalCents,
+			"addOns": addOnNames(bd.AddOns), "breakdown": bd,
+		})
 	}
 	respond(w, 200, out)
 }
@@ -545,9 +558,7 @@ func (a *App) adminAppointments(w http.ResponseWriter, r *http.Request) {
 	rows, err := a.db.Query(r.Context(),
 		`SELECT ap.id, u.name, u.email, u.phone, s.name, b.name,
 		        ap.starts_at, ap.ends_at, ap.status,
-		        COALESCE((SELECT array_agg(a.name ORDER BY a.id)
-		            FROM appointment_addons aa JOIN addons a ON a.id=aa.addon_id
-		            WHERE aa.appointment_id=ap.id), '{}')
+		        s.price_cents, s.duration_minutes
 		 FROM appointments ap
 		 JOIN users u ON u.id=ap.customer_id
 		 JOIN services s ON s.id=ap.service_id
@@ -559,26 +570,47 @@ func (a *App) adminAppointments(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 
-	out := []map[string]any{}
+	type item struct {
+		id                                    int64
+		customer, email, phone, barber, state string
+		start, end                            time.Time
+		service                               priceLine
+	}
+	var items []item
+	var ids []int64
 	for rows.Next() {
-		var id int64
-		var customer, email, phone, service, barber, status string
-		var start, end time.Time
-		var addOnNames []string
-		if rows.Scan(&id, &customer, &email, &phone, &service,
-			&barber, &start, &end, &status, &addOnNames) != nil {
+		var it item
+		if rows.Scan(&it.id, &it.customer, &it.email, &it.phone,
+			&it.service.Name, &it.barber, &it.start, &it.end, &it.state,
+			&it.service.PriceCents, &it.service.DurationMinutes) != nil {
 			fail(w, 500, "Could not read appointments")
 			return
 		}
-		out = append(out, map[string]any{
-			"id": id, "customer": customer, "email": email, "phone": phone,
-			"service": service, "barber": barber, "addOns": addOnNames,
-			"startsAt": start, "endsAt": end, "status": status,
-		})
+		items = append(items, it)
+		ids = append(ids, it.id)
 	}
 	if rows.Err() != nil {
 		fail(w, 500, "Could not read appointments")
 		return
+	}
+	rows.Close()
+
+	lines, err := a.loadAddOnLines(r.Context(), ids)
+	if err != nil {
+		fail(w, 500, "Could not read appointments")
+		return
+	}
+
+	out := []map[string]any{}
+	for _, it := range items {
+		bd := buildBreakdown(it.service, lines[it.id])
+		out = append(out, map[string]any{
+			"id": it.id, "customer": it.customer, "email": it.email,
+			"phone": it.phone, "service": it.service.Name, "barber": it.barber,
+			"addOns": addOnNames(bd.AddOns), "breakdown": bd,
+			"priceCents": bd.TotalCents,
+			"startsAt":   it.start, "endsAt": it.end, "status": it.state,
+		})
 	}
 	respond(w, 200, out)
 }

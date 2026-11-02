@@ -667,6 +667,15 @@ td small { display: block; color: var(--muted); }
 .catalog-heading-row h3 { margin: 0; }
 .catalog-services small, .catalog-addons small { display: block; color: var(--muted); font-weight: 400; }
 .inactive-row { opacity: .55; }
+.price-toggle { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: 6px; padding: 0; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; text-align: left; }
+.price-toggle:hover .price-toggle-label, .price-toggle:focus-visible .price-toggle-label { color: var(--gold-dark, #8a6d2b); }
+.price-toggle-label { font-size: .75rem; color: var(--muted); text-decoration: underline; }
+.price-lines { margin: 8px 0 0; padding: 10px 12px; min-width: 210px; background: #f5eddd; border: 1px solid var(--line); font-size: .82rem; }
+.price-lines > div { display: flex; justify-content: space-between; gap: 16px; padding: 3px 0; }
+.price-lines dt, .price-lines dd { margin: 0; }
+.price-lines small { display: block; color: var(--muted); }
+.price-addon dt { padding-left: 6px; }
+.price-total { margin-top: 4px; padding-top: 6px !important; border-top: 1px solid var(--line); font-weight: 700; }
 .week-ending { align-self: center; font-weight: 600; font-size: .85rem; }
 .day-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
 .day-tabs button { background: var(--white); border: 1px solid var(--line); padding: 7px 12px; font: inherit; font-size: .8rem; cursor: pointer; }

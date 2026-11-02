@@ -63,7 +63,7 @@ describe('MyBookingsComponent add-ons', () => {
 
   it('shows add-ons and the total price', () => {
     const el = create([
-      { id: 1, service: 'Precision Haircut', barber: 'B', startsAt: '2030-01-07T15:00:00Z', status: 'pending', priceCents: 3000, addOns: ['Enhancements'] }
+      { id: 1, service: 'Precision Haircut', barber: 'B', startsAt: '2030-01-07T15:00:00Z', status: 'pending', priceCents: 3000, addOns: ['Enhancements'], breakdown: { service: { name: 'Precision Haircut', priceCents: 2500, durationMinutes: 30 }, addOns: [{ name: 'Enhancements', priceCents: 500, durationMinutes: 5 }], totalCents: 3000, totalMinutes: 35 } }
     ]);
     expect(el.textContent).toContain('+ Enhancements');
     expect(el.textContent).toContain('$30.00');
@@ -71,7 +71,7 @@ describe('MyBookingsComponent add-ons', () => {
 
   it('shows no add-on line when there are none', () => {
     const el = create([
-      { id: 2, service: 'Shape Up', barber: 'B', startsAt: '2030-01-07T15:00:00Z', status: 'pending', priceCents: 2000, addOns: [] }
+      { id: 2, service: 'Shape Up', barber: 'B', startsAt: '2030-01-07T15:00:00Z', status: 'pending', priceCents: 2000, addOns: [], breakdown: { service: { name: 'Shape Up', priceCents: 2000, durationMinutes: 10 }, addOns: [], totalCents: 2000, totalMinutes: 10 } }
     ]);
     expect(el.textContent).not.toContain('+ ');
   });
