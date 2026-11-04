@@ -131,3 +131,18 @@ jobs:
             docker volume prune -f
             echo "Prune docker build cache"
             docker builder prune -a -f
+
+            # 6. Run the disaster recovery backup script
+            ./scripts/db-backup.sh
+            echo "Disaster recovery backup completed successfully."
+
+            # 7. Set Cronjob
+            if crontab -l 2>/dev/null | grep -q "/home/ubuntu/jrcutz/scripts/db-backup.sh"; then
+              echo "Cronjob for disaster recovery backup already exists."
+            else
+              (crontab -l 2>/dev/null; echo "0 2 * * * /home/ubuntu/jrcutz/scripts/db-backup.sh") | crontab -
+              echo "Cronjob for disaster recovery backup set successfully."
+            fi
+            
+            echo "Current crontab entries:"
+            crontab -l
