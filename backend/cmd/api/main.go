@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"math/big"
 	"net/http"
@@ -464,10 +465,35 @@ func (a *App) createAppointment(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, "Could not create appointment")
 		return
 	}
+	var customerName, customerEmail, barberName, serviceName string
+	err = tx.QueryRow(r.Context(),
+		`SELECT u.name,u.email,b.name,s.name
+		 FROM users u, barbers b, services s
+		 WHERE u.id=$1 AND b.id=$2 AND s.id=$3`,
+		claims.UserID, in.BarberID, in.ServiceID,
+	).Scan(&customerName, &customerEmail, &barberName, &serviceName)
+	if err != nil {
+		fail(w, 500, "Could not prepare appointment notification")
+		return
+	}
 
 	if err = tx.Commit(r.Context()); err != nil {
 		fail(w, 500, "Could not confirm booking")
 		return
+	}
+	if cfg, enabled := loadSMTPConfig(); enabled {
+		shopLocation := handlers.ShopLocation()
+		body := fmt.Sprintf("A new appointment was booked.\n\nAppointment: #%d\nCustomer: %s (%s)\nBarber: %s\nService: %s\nStarts: %s\nEnds: %s\nNotes: %s\n",
+			id, customerName, customerEmail, barberName, serviceName,
+			start.In(shopLocation).Format("3:04 PM MST, Mon Jan 2, 2006"),
+			end.In(shopLocation).Format("3:04 PM MST, Mon Jan 2, 2006"),
+			strings.TrimSpace(in.Notes))
+		if mailErr := sendAppointmentEmail(cfg,
+			fmt.Sprintf("New appointment #%d", id), body); mailErr != nil {
+			log.Printf("appointment notification email failed for #%d: %v", id, mailErr)
+		}
+	} else {
+		log.Printf("appointment notification email skipped for #%d: SMTP configuration is incomplete", id)
 	}
 	respond(w, http.StatusCreated, map[string]any{
 		"id": id, "status": "pending",
