@@ -91,3 +91,18 @@ migrate \
 
 ```
 For production, use environment variables or a secret manager for credentials rather than putting passwords directly into commands or source files.
+
+## New appointment email notifications
+The API sends a notification to `BARBER_EMAIL` after a booking is committed. Configure Gmail SMTP in the root `.env`:
+
+```env
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USERNAME=johnathanjr.rodgers@gmail.com
+SMTP_APP_PASSWORD=your-google-app-password
+MAIL_FROM=johnathanjr.rodgers@gmail.com
+MAIL_FROM_NAME=JRCutz
+BARBER_EMAIL=johnathanjr.rodgers@gmail.com
+```
+
+Create a Google App Password for the sending account and set it as `SMTP_APP_PASSWORD`; the normal Gmail password will not work. Restart or redeploy the API after changing `.env`. If SMTP settings are incomplete or Gmail rejects the message, the appointment remains saved and the API logs the notification failure.
