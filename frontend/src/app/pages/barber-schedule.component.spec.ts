@@ -13,7 +13,7 @@ const daySlots = [slot('09:00'), slot('09:15', 'booked'), slot('12:00', 'lunch')
 describe('BarberScheduleComponent', () => {
   let fixture: ComponentFixture<BarberScheduleComponent>;
   let comp: BarberScheduleComponent;
-  const names = ['barbers', 'getBarberAvailability', 'barberSlots', 'saveBarberAvailability'] as const;
+  const names = ['barbers', 'getBarberAvailability', 'adminBarberSlots', 'saveBarberAvailability'] as const;
   let api: Record<typeof names[number], Mock>;
 
   const el = () => fixture.nativeElement as HTMLElement;
@@ -22,7 +22,7 @@ describe('BarberScheduleComponent', () => {
     api = Object.fromEntries(names.map(n => [n, vi.fn()])) as typeof api;
     api.barbers.mockReturnValue(of(barbers));
     api.getBarberAvailability.mockReturnValue(of([]));
-    api.barberSlots.mockReturnValue(of({
+    api.adminBarberSlots.mockReturnValue(of({
       date: '', timezone: 'UTC', durationMinutes: 15, slots: daySlots
     } as any));
     TestBed.configureTestingModule({
@@ -40,7 +40,7 @@ describe('BarberScheduleComponent', () => {
     it('selects the only barber by default and loads their schedule', () => {
       expect(comp.selectedBarberId).toBe(9);
       expect(api.getBarberAvailability).toHaveBeenCalledWith(9);
-      expect(api.barberSlots).toHaveBeenCalled();
+      expect(api.adminBarberSlots).toHaveBeenCalled();
     });
 
     it('keeps the weekly editor collapsed until editing starts', () => {
@@ -92,6 +92,11 @@ describe('BarberScheduleComponent', () => {
         expect(comp.weekDays[0].date).toBe('2026-11-02');
         expect(comp.weekDays[6].date).toBe('2026-11-08');
         expect(el().querySelectorAll('.week-col').length).toBe(7);
+        expect(api.adminBarberSlots.mock.calls.slice(-7)).toEqual([
+          [9, '2026-11-02'], [9, '2026-11-03'], [9, '2026-11-04'],
+          [9, '2026-11-05'], [9, '2026-11-06'], [9, '2026-11-07'],
+          [9, '2026-11-08']
+        ]);
       });
 
       it('shows the week ending Sunday', () => {
@@ -145,7 +150,7 @@ describe('BarberScheduleComponent', () => {
       });
 
       it('shows an error when a week fails to load', () => {
-        api.barberSlots.mockReturnValue(throwError(() => ({ error: { error: 'boom' } })));
+        api.adminBarberSlots.mockReturnValue(throwError(() => ({ error: { error: 'boom' } })));
         comp.loadSlots();
         expect(comp.slotsError).toBe('boom');
       });

@@ -12,7 +12,7 @@ export const customerGuard: CanActivateFn = () => {
 export const adminGuard: CanActivateFn = () => {
   const api = inject(ApiService);
   const router = inject(Router);
-  if (!api.isAdmin) return router.createUrlTree(['/login']);
+  if (!api.loggedIn || !api.isAdmin) return router.createUrlTree(['/login']);
   return api.mustChangePassword ? router.createUrlTree(['/change-password']) : true;
 };
 

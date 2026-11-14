@@ -70,6 +70,7 @@ jrcutz/
             ├── app.routes.ts
             ├── core/api.service.ts
             ├── core/auth.guard.ts
+            ├── core/session.interceptor.ts
             ├── pages/home.component.ts
             ├── pages/login.component.ts
             ├── pages/booking.component.ts
@@ -301,71 +302,22 @@ Create frontend/src/app/core/api.service.ts.
 
 This starter keeps the JWT in local storage for simplicity. For a public production site, prefer short-lived access tokens with a secure, HttpOnly, SameSite cookie strategy, CSRF protection where appropriate, and rate limits on login and registration.
 
-Create frontend/src/app/core/auth.guard.ts:
-```typescript
-import { inject } from '@angular/core';
-import { CanActivateFn, Router } from '@angular/router';
-import { ApiService } from './api.service';
+The API issues JWTs valid for 12 hours. The frontend keeps the token and user
+in local storage; route guards use them for navigation, while the Go middleware
+validates the token and enforces roles on every protected request. When an
+authenticated API request returns HTTP 401, the session interceptor clears the
+rejected session and redirects to sign-in with a message. An older failed
+request does not clear a newer session.
 
-export const customerGuard: CanActivateFn = () => {
-  const api = inject(ApiService);
-  const router = inject(Router);
-  return api.loggedIn ? true : router.createUrlTree(['/login']);
-};
-
-export const adminGuard: CanActivateFn = () => {
-  const api = inject(ApiService);
-  const router = inject(Router);
-  return api.isAdmin ? true : router.createUrlTree(['/login']);
-};
-```
-These guards improve navigation, but the Go middleware remains the security boundary
+If you see **Invalid or expired token**, sign out and sign in again. Tokens can
+also become invalid if `JWT_SECRET` changes; keep the same secret across API
+restarts and replicas unless intentionally invalidating existing sessions. Do
+not share JWTs or secrets when troubleshooting.
 
 ## 9.7 Application routes and bootstrap
-Create frontend/src/app/app.routes.ts:
-```ts
-import { Routes } from '@angular/router';
-import { HomeComponent } from './pages/home.component';
-import { LoginComponent } from './pages/login.component';
-import { BookingComponent } from './pages/booking.component';
-import { MyBookingsComponent } from './pages/my-bookings.component';
-import { AdminComponent } from './pages/admin.component';
-import { customerGuard, adminGuard } from './core/auth.guard';
-
-export const routes: Routes = [
-  { path: '', component: HomeComponent },
-  { path: 'login', component: LoginComponent },
-  {
-    path: 'book',
-    component: BookingComponent,
-    canActivate: [customerGuard]
-  },
-  {
-    path: 'my-bookings',
-    component: MyBookingsComponent,
-    canActivate: [customerGuard]
-  },
-  {
-    path: 'admin',
-    component: AdminComponent,
-    canActivate: [adminGuard]
-  },
-  { path: '**', redirectTo: '' }
-];
-```
-
-Create frontend/src/main.ts:
-```ts
-import { bootstrapApplication } from '@angular/platform-browser';
-import { provideHttpClient } from '@angular/common/http';
-import { provideRouter } from '@angular/router';
-import { AppComponent } from './app/app.component';
-import { routes } from './app/app.routes';
-
-bootstrapApplication(AppComponent, {
-  providers: [provideHttpClient(), provideRouter(routes)]
-}).catch(console.error);
-```
+The application routes and guards are defined in
+[`frontend/src/app/app.routes.ts`](frontend/src/app/app.routes.ts). Bootstrap
+registers the HTTP session interceptor in [`frontend/src/main.ts`](frontend/src/main.ts).
 
 Create frontend/src/index.html
 ```html
@@ -456,7 +408,9 @@ Create frontend/src/app/pages/login.component.ts:
 ## 9.11 Appointment booking
 Create frontend/src/app/pages/booking.component.ts:
 
-This booking screen submits a requested time directly. A production version should add a live availability endpoint and display only valid slots based on barber hours, service duration, breaks, and existing bookings.
+The booking screen loads available slots based on barber hours, service duration,
+breaks, and existing bookings. The public `GET /api/barbers/{id}/slots` endpoint
+accepts dates from today through three months ahead in the shop timezone.
 
 ## 9.12 Customer appointment history
 Create frontend/src/app/pages/my-bookings.component.ts:
@@ -464,7 +418,13 @@ Create frontend/src/app/pages/my-bookings.component.ts:
 ## 9.13 Admin dashboard
 Create frontend/src/app/pages/admin.component.ts:
 
-The dashboard includes appointment review and status management. Service editing, barber editing, reporting, and staff schedule management are not yet implemented as admin screens in this starter.
+The dashboard includes appointment management, catalog editing, and a weekly
+staff schedule editor. Its availability view supports daily and Monday-to-Sunday
+weekly views, date navigation, and slot-status filters. It uses the
+admin-protected `GET /api/admin/barbers/{id}/slots` endpoint, which also accepts
+past and more distant dates so the current week can be displayed in full.
+Past-day slots are generated from the **currently saved** weekly schedule, not
+historical working-hour snapshots; booked, lunch, and past slots are identified.
 
 ## 9.14 Responsive visual styling
 Create frontend/src/styles.scss:
@@ -583,6 +543,15 @@ Sign in at /login using the administrator email and password from .env. Customer
 
 Important: the SQL initialization script runs automatically only when PostgreSQL initializes a fresh data directory. If you change the schema during development, use versioned migrations rather than expecting Docker Compose to re-run the initialization script.
 
+The schedule-view change requires both the API and frontend to be deployed
+together; the session-handling change requires the frontend to be redeployed.
+For a locally built Compose stack, rebuild and restart both services with:
+```bash
+docker compose up -d --build api frontend
+```
+For an image-based deployment, build and publish updated images and deploy
+both using the environment's normal release process.
+
 ## 11. Verify the complete booking workflow
 Use this sequence to test the initial implementation:
 1. Start the stack
@@ -606,6 +575,12 @@ Use this sequence to test the initial implementation:
 7. Cancel and verify
   -Cancel a future booking and verify that its time can be booked again.
 
+8. Check the admin availability view
+  - Open Weekly on a date after Monday and verify all seven days load, including past days. Navigate between weeks and check the slot-status filters.
+
+9. Check session recovery
+  - With an expired or invalid session, make a protected request and verify the app prompts you to sign in again. A failed sign-in should still display its own error.
+
 ## 12. What remains before production
 This is a substantial starter implementation, but it is important to distinguish working features from production-ready functionality.
 |Feature| Current implementation|
@@ -617,11 +592,12 @@ This is a substantial starter implementation, but it is important to distinguish
 |Admin appointment status management| Implemented|
 |PostgreSQL persistence| Implemented|
 |Concurrent overlapping-booking prevention| Implemented|
-|Live available-time search| Not implemented|
-|Validation against actual shop opening hours| Not implemented|
+|Live available-time search| Implemented|
+|Validation against actual shop opening hours| Implemented|
 |Admin CRUD for services and barbers| Not implemented|
-|Staff schedule editor| Not implemented|
+|Staff schedule editor| Implemented|
 |Email/SMS notifications and payment integration| Not implemented|
 |Automated integration tests and production deployment hardening| Not implemented|
 
-Before opening this to real customers, I would prioritize live slot availability and shop-hours enforcement, complete the admin management screens, and add automated tests. The current code does not yet validate that a requested time falls within a barber's working hours.
+Before opening this to real customers, review production security, complete any
+remaining management features, and expand automated integration testing.

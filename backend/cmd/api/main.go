@@ -857,8 +857,10 @@ func main() {
 	mux.HandleFunc("GET /api/services", app.services)
 	mux.HandleFunc("GET /api/addons", app.addOns)
 	mux.HandleFunc("GET /api/barbers", app.barbers)
-	mux.HandleFunc("GET /api/barbers/{id}/slots",
-		(&handlers.SlotsHandler{DB: db}).Get)
+	slotsHandler := &handlers.SlotsHandler{DB: db}
+	mux.HandleFunc("GET /api/barbers/{id}/slots", slotsHandler.Get)
+	mux.Handle("GET /api/admin/barbers/{id}/slots", app.admin(
+		http.HandlerFunc(slotsHandler.GetAdmin)))
 	mux.HandleFunc("POST /api/auth/register", app.register)
 	mux.HandleFunc("POST /api/auth/login", app.login)
 	mux.Handle("POST "+changePasswordPath, app.auth(

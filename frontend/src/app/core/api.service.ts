@@ -202,6 +202,13 @@ export class ApiService {
     );
   }
 
+  adminBarberSlots(barberId: number, date: string): Observable<SlotsResponse> {
+    return this.http.get<SlotsResponse>(
+      `${this.base}/admin/barbers/${barberId}/slots`,
+      { params: { date }, headers: this.headers() }
+    );
+  }
+
   book(data: {
     serviceId: number;
     addOnIds?: number[];

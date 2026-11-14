@@ -39,6 +39,16 @@ describe('ApiService', () => {
     req.flush({ date: '2030-01-07', timezone: 'UTC', durationMinutes: 15, slots: [] });
   });
 
+  it('requests admin slots with authorization and date', () => {
+    localStorage.setItem('barbershop_token', 'old');
+    api.adminBarberSlots(3, '2026-11-02').subscribe();
+    const req = http.expectOne(r => r.url === '/api/admin/barbers/3/slots');
+    expect(req.request.method).toBe('GET');
+    expect(req.request.params.get('date')).toBe('2026-11-02');
+    expect(req.request.headers.get('Authorization')).toBe('Bearer old');
+    req.flush({ date: '2026-11-02', timezone: 'UTC', durationMinutes: 15, slots: [] });
+  });
+
   it('sends add-on ids with the slots request and booking', () => {
     api.barberSlots(3, 7, '2030-01-07', [1, 2]).subscribe();
     const req = http.expectOne(r => r.url === '/api/barbers/3/slots');

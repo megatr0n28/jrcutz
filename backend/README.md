@@ -1,4 +1,11 @@
 # Backend architecture
+
+The public `GET /api/barbers/{id}/slots` endpoint accepts dates from today
+through three months ahead for booking. The authenticated admin endpoint
+`GET /api/admin/barbers/{id}/slots` also accepts past and more distant dates
+for the schedule view. Slots for past dates use the currently saved weekly
+schedule, not a historical snapshot of working hours.
+
 ```text
 backend/
 ├── cmd/

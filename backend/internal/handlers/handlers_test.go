@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -44,6 +45,8 @@ func (r *fakeRows) Scan(dest ...any) error {
 			} else {
 				*p = nil
 			}
+		case *time.Time:
+			*p = row[i].(time.Time)
 		}
 	}
 	return nil
@@ -142,6 +145,59 @@ func TestSlotsGetValidation(t *testing.T) {
 			h.Get(rec, req)
 			if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), c.msg) {
 				t.Fatalf("code %d body %s", rec.Code, rec.Body.String())
+			}
+		})
+	}
+}
+
+type fakeSlotsRow struct{}
+
+func (fakeSlotsRow) Scan(dest ...any) error {
+	*dest[0].(*bool) = true
+	return nil
+}
+
+type fakeSlotsDB struct {
+	bookedStart time.Time
+}
+
+func (f fakeSlotsDB) QueryRow(context.Context, string, ...any) pgx.Row {
+	return fakeSlotsRow{}
+}
+
+func (f fakeSlotsDB) Query(_ context.Context, query string, _ ...any) (pgx.Rows, error) {
+	if strings.Contains(query, "FROM barber_availability") {
+		return &fakeRows{data: [][]any{{"09:00", "10:00", "09:30", "09:45"}}}, nil
+	}
+	return &fakeRows{data: [][]any{{f.bookedStart, f.bookedStart.Add(15 * time.Minute)}}}, nil
+}
+
+func TestAdminSlotsOutsideBookingWindow(t *testing.T) {
+	t.Setenv("SHOP_TIMEZONE", "America/New_York")
+	now := time.Now().In(ShopLocation())
+	for _, day := range []time.Time{now.AddDate(0, 0, -2), now.AddDate(0, 6, 0)} {
+		t.Run(day.Format("2006-01-02"), func(t *testing.T) {
+			booking := time.Date(day.Year(), day.Month(), day.Day(), 9, 15, 0, 0, day.Location())
+			h := &SlotsHandler{DB: fakeSlotsDB{bookedStart: booking}}
+			req := httptest.NewRequest(http.MethodGet, "/api/admin/barbers/1/slots?date="+day.Format("2006-01-02"), nil)
+			req.SetPathValue("id", "1")
+			rec := httptest.NewRecorder()
+			h.GetAdmin(rec, req)
+			if rec.Code != http.StatusOK {
+				t.Fatalf("code %d body %s", rec.Code, rec.Body.String())
+			}
+			var result SlotsResponse
+			if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil {
+				t.Fatal(err)
+			}
+			if result.Date != day.Format("2006-01-02") || len(result.Slots) != 4 {
+				t.Fatalf("unexpected response: %+v", result)
+			}
+			if result.Slots[1].Reason != "booked" || result.Slots[2].Reason != "lunch" {
+				t.Fatalf("booked and lunch slots not preserved: %+v", result.Slots)
+			}
+			if day.Before(now) && (result.Slots[0].Reason != "past" || result.Slots[0].Available) {
+				t.Fatalf("past slot is not marked unavailable: %+v", result.Slots[0])
 			}
 		})
 	}
