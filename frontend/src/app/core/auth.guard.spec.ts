@@ -22,7 +22,13 @@ describe('auth guards', () => {
 
   it('sends signed-out visitors to login', () => {
     expect(path(run(customerGuard))).toBe('/login');
+    expect(path(run(adminGuard))).toBe('/login');
     expect(path(run(signedInGuard))).toBe('/login');
+  });
+
+  it('does not allow a stored admin user without a token', () => {
+    localStorage.setItem('barbershop_user', JSON.stringify({ id: 1, role: 'admin' }));
+    expect(path(run(adminGuard))).toBe('/login');
   });
 
   it('redirects users who must change their password', () => {

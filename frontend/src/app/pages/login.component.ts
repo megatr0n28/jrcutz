@@ -1,6 +1,6 @@
 import { Component, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { Router } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { ApiService } from '../core/api.service';
 
 @Component({
@@ -12,6 +12,9 @@ import { ApiService } from '../core/api.service';
         <span class="eyebrow">WELCOME TO JR CUTZ</span>
         <h1>{{ register ? 'Join the club.' : 'Good to see you.' }}</h1>
         <p>Manage your appointments and make time for your next cut.</p>
+        @if (sessionExpired) {
+          <p role="status">Your session has expired or is no longer valid. Please sign in again.</p>
+        }
 
         <div class="form-tabs">
           <button [class.active]="!register" (click)="register=false">Sign in</button>
@@ -49,7 +52,9 @@ import { ApiService } from '../core/api.service';
 export class LoginComponent {
   private api = inject(ApiService);
   private router = inject(Router);
+  private route = inject(ActivatedRoute);
 
+  sessionExpired = this.route.snapshot.queryParamMap.get('session') === 'expired';
   register = false;
   busy = false;
   name = '';
@@ -61,6 +66,7 @@ export class LoginComponent {
   submit(): void {
     this.busy = true;
     this.error = '';
+    this.sessionExpired = false;
 
     const request = this.register
       ? this.api.register(this.name, this.email, this.phone, this.password)

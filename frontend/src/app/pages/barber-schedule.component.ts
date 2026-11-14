@@ -149,7 +149,7 @@ import {
               <div>
                 <span class="eyebrow">TIME SLOTS</span>
                 <h3>Availability view.</h3>
-                <p>15-minute slots generated from the saved weekly schedule.</p>
+                <p>15-minute slots generated from the current saved weekly schedule, including for past dates.</p>
               </div>
               <div class="slot-view-controls">
                 <div class="view-toggle" role="group" aria-label="Availability view">
@@ -399,7 +399,7 @@ export class BarberScheduleComponent implements OnInit {
         d.setDate(start.getDate() + i);
         return d;
       });
-      forkJoin(dates.map(d => this.api.barberSlots(barberId, null, this.formatDate(d)))).subscribe({
+      forkJoin(dates.map(d => this.api.adminBarberSlots(barberId, this.formatDate(d)))).subscribe({
         next: results => {
           if (stale()) return;
           this.slotsLoading = false;
@@ -418,7 +418,7 @@ export class BarberScheduleComponent implements OnInit {
       return;
     }
 
-    this.api.barberSlots(barberId, null, date).subscribe({
+    this.api.adminBarberSlots(barberId, date).subscribe({
       next: result => {
         if (stale()) return;
         this.slotsLoading = false;

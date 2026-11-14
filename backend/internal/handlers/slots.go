@@ -11,20 +11,22 @@ import (
 	_ "time/tzdata"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 const slotStepMinutes = 15
 
 type SlotsHandler struct {
-	DB *pgxpool.Pool
+	DB interface {
+		Query(context.Context, string, ...any) (pgx.Rows, error)
+		QueryRow(context.Context, string, ...any) pgx.Row
+	}
 }
 
 type Slot struct {
 	StartsAt  string `json:"startsAt"`
 	Time      string `json:"time"`
 	Available bool   `json:"available"`
-	// Reason is "booked" or "past" when the slot is unavailable.
+	// Reason is "booked", "lunch", or "past" when the slot is unavailable.
 	Reason string `json:"reason,omitempty"`
 }
 
@@ -58,6 +60,15 @@ func writeSlotsError(w http.ResponseWriter, status int, msg string) {
 // service fits inside a working block, is in the future, and does not overlap
 // an existing non-cancelled appointment.
 func (h *SlotsHandler) Get(w http.ResponseWriter, r *http.Request) {
+	h.get(w, r, false)
+}
+
+// GetAdmin allows administrators to inspect dates outside the booking window.
+func (h *SlotsHandler) GetAdmin(w http.ResponseWriter, r *http.Request) {
+	h.get(w, r, true)
+}
+
+func (h *SlotsHandler) get(w http.ResponseWriter, r *http.Request, adminView bool) {
 	barberID, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil || barberID <= 0 {
 		writeSlotsError(w, http.StatusBadRequest, "Invalid barber ID")
@@ -82,7 +93,7 @@ func (h *SlotsHandler) Get(w http.ResponseWriter, r *http.Request) {
 
 	now := time.Now().In(loc)
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc)
-	if day.Before(today) || day.After(now.AddDate(0, 3, 0)) {
+	if !adminView && (day.Before(today) || day.After(now.AddDate(0, 3, 0))) {
 		writeSlotsError(w, http.StatusBadRequest,
 			"Choose a date within the next 3 months")
 		return
