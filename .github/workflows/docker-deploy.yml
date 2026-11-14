@@ -136,13 +136,28 @@ jobs:
             ./scripts/db-backup.sh
             echo "Disaster recovery backup completed successfully."
 
-            # 7. Set Cronjob
-            if crontab -l 2>/dev/null | grep -q "/home/ubuntu/jrcutz/scripts/db-backup.sh"; then
+            # 7. Set Cronjob (note: % is escaped as \% because % is special in crontab)
+            CRON_JOB="0 2 * * * /home/ubuntu/jrcutz/scripts/db-backup.sh 2>&1 | awk '{ print strftime(\"[\%Y-\%m-\%d \%H:\%M:\%S]\"), \$0; fflush(); }' >> /home/ubuntu/jrcutz/scripts/db-backup.log"
+            if crontab -l 2>/dev/null | grep -qF "$CRON_JOB"; then
               echo "Cronjob for disaster recovery backup already exists."
             else
-              (crontab -l 2>/dev/null; echo "0 2 * * * /home/ubuntu/jrcutz/scripts/db-backup.sh") | crontab -
+              (crontab -l 2>/dev/null | grep -vF "/home/ubuntu/jrcutz/scripts/db-backup.sh"; echo "$CRON_JOB") | crontab -
               echo "Cronjob for disaster recovery backup set successfully."
             fi
             
             echo "Current crontab entries:"
             crontab -l
+
+            # 8. Configure log rotation for disaster recovery backups
+            sudo tee /etc/logrotate.d/jrcutz-db-backup > /dev/null <<'EOF'
+            /home/ubuntu/jrcutz/scripts/db-backup.log {
+                weekly
+                rotate 4
+                compress
+                missingok
+                notifempty
+                copytruncate
+            }
+            EOF
+            sudo chmod 644 /etc/logrotate.d/jrcutz-db-backup
+            echo "Logrotate configuration installed."
