@@ -23,6 +23,11 @@ jrcutz/
 └── frontend/
 ```
 
+The deployment workflow decrypts `prod.env` into the repository root and schedules
+`scripts/db-backup.sh` daily at 02:00. The backup script reads that file relative
+to its own location, so it can also run from cron's working directory. Ensure the
+cron user can read `prod.env`.
+
 Complete Sandbox Topology State
 
 All components are executed perfectly on their allocated network namespaces:
