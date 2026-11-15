@@ -1,7 +1,8 @@
 #!/bin/bash
 set -e
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 set -a
-source ./prod.env
+source "$SCRIPT_DIR/../prod.env"
 set +a
 
 # Configuration (adjust variable names to match your prod.env)
